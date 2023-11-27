@@ -21,3 +21,5 @@ serve:
 psql:
 	PGPASSWORD=for-testing psql -h localhost -p 5432 -U postgres
 
+profile.html: $(wildcard src/**/*.py)
+	pyinstrument -r html -o profile.html --from-path harlequin -a postgres "postgresql://postgres:for-testing@localhost:5432/postgres"
