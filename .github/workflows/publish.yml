@@ -37,7 +37,7 @@ jobs:
       - name: Create a Github Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v${{ steps.harlequin_pg_version.outputs.harlequin_version }}
+          tag_name: v${{ steps.harlequin_pg_version.outputs.harlequin_pg_version }}
           target_commitish: main
           token: ${{ secrets.HARLEQUIN_PG_RELEASE_TOKEN }}
           body_path: CHANGELOG.md
