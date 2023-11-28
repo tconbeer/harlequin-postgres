@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.3] - 2023-11-28
+
 ### Bug fixes
 
 -   Implements connection pools instead of sharing a connection across threads.
@@ -26,7 +28,9 @@ All notable changes to this project will be documented in this file.
 
 -   Adds a basic Postgres adapter with most common connection options.
 
-[Unreleased]: https://github.com/tconbeer/harlequin-postgres/compare/0.1.2...HEAD
+[Unreleased]: https://github.com/tconbeer/harlequin-postgres/compare/0.1.3...HEAD
+
+[0.1.3]: https://github.com/tconbeer/harlequin-postgres/compare/0.1.2...0.1.3
 
 [0.1.2]: https://github.com/tconbeer/harlequin-postgres/compare/0.1.1...0.1.2
 
