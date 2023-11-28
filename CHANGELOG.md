@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Bug fixes
+
+-   Implements connection pools instead of sharing a connection across threads.
+
 ## [0.1.2] - 2023-11-27
 
 ### Bug fixes
