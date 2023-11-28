@@ -5,8 +5,8 @@ from typing import Any, Sequence
 from harlequin.adapter import HarlequinAdapter, HarlequinConnection, HarlequinCursor
 from harlequin.catalog import Catalog, CatalogItem
 from harlequin.exception import HarlequinConnectionError, HarlequinQueryError
-from psycopg2 import connect
 from psycopg2.extensions import connection, cursor
+from psycopg2.pool import ThreadedConnectionPool
 from textual_fastdatatable.backend import AutoBackendType
 
 from harlequin_postgres.cli_options import POSTGRES_OPTIONS
@@ -55,9 +55,11 @@ class HarlequinPostgresConnection(HarlequinConnection):
         self.init_message = init_message
         try:
             if conn_str and conn_str[0]:
-                self.conn: connection = connect(dsn=conn_str[0], **options)
+                self.pool: ThreadedConnectionPool = ThreadedConnectionPool(
+                    1, 5, dsn=conn_str[0], **options
+                )
             else:
-                self.conn = connect(**options)
+                self.pool = ThreadedConnectionPool(1, 5, **options)
         except Exception as e:
             raise HarlequinConnectionError(
                 msg=str(e), title="Harlequin could not connect to Postgres."
@@ -65,10 +67,12 @@ class HarlequinPostgresConnection(HarlequinConnection):
 
     def execute(self, query: str) -> HarlequinCursor | None:
         try:
-            with self.conn:  # autocommit transaction
-                cur = self.conn.cursor()
+            conn: connection = self.pool.getconn(key="main")
+            with conn:  # autocommit transaction
+                cur = conn.cursor()
                 cur.execute(query=query)
         except Exception as e:
+            cur.close()
             raise HarlequinQueryError(
                 msg=str(e),
                 title="Harlequin encountered an error while executing your query.",
@@ -79,6 +83,8 @@ class HarlequinPostgresConnection(HarlequinConnection):
             else:
                 cur.close()
                 return None
+        finally:
+            self.pool.putconn(conn, key="main")
 
     def get_catalog(self) -> Catalog:
         databases = self._get_databases()
@@ -130,7 +136,8 @@ class HarlequinPostgresConnection(HarlequinConnection):
         return Catalog(items=db_items)
 
     def _get_databases(self) -> list[tuple[str]]:
-        with self.conn.cursor() as cur:
+        conn: connection = self.pool.getconn()
+        with conn.cursor() as cur:
             cur.execute(
                 """
                 select datname
@@ -141,10 +148,12 @@ class HarlequinPostgresConnection(HarlequinConnection):
                 ;"""
             )
             results = cur.fetchall()
+        self.pool.putconn(conn)
         return results
 
     def _get_schemas(self, dbname: str) -> list[tuple[str]]:
-        with self.conn.cursor() as cur:
+        conn: connection = self.pool.getconn()
+        with conn.cursor() as cur:
             cur.execute(
                 f"""
                 select schema_name
@@ -156,10 +165,12 @@ class HarlequinPostgresConnection(HarlequinConnection):
                 ;"""
             )
             results = cur.fetchall()
+        self.pool.putconn(conn)
         return results
 
     def _get_relations(self, dbname: str, schema: str) -> list[tuple[str, str]]:
-        with self.conn.cursor() as cur:
+        conn: connection = self.pool.getconn()
+        with conn.cursor() as cur:
             cur.execute(
                 f"""
                 select table_name, table_type
@@ -170,12 +181,14 @@ class HarlequinPostgresConnection(HarlequinConnection):
                 ;"""
             )
             results = cur.fetchall()
+        self.pool.putconn(conn)
         return results
 
     def _get_columns(
         self, dbname: str, schema: str, relation: str
     ) -> list[tuple[str, str]]:
-        with self.conn.cursor() as cur:
+        conn: connection = self.pool.getconn()
+        with conn.cursor() as cur:
             cur.execute(
                 f"""
                 select column_name, data_type
@@ -187,6 +200,7 @@ class HarlequinPostgresConnection(HarlequinConnection):
                 ;"""
             )
             results = cur.fetchall()
+        self.pool.putconn(conn)
         return results
 
     @staticmethod

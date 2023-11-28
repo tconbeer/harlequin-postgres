@@ -57,7 +57,7 @@ def connection() -> Generator[HarlequinPostgresConnection, None, None]:
         conn_str=(f"{TEST_DB_CONN}",), dbname="test"
     ).connect()
     yield conn
-    conn.conn.close()
+    conn.pool.closeall()
     cur = pgconn.cursor()
     cur.execute("drop database if exists test;")
     cur.close()
