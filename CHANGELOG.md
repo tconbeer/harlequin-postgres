@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Features
+
+-   Implements get_completions for keywords, functions, and settings.
+
 ## [0.1.3] - 2023-11-28
 
 ### Bug fixes
