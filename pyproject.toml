@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "harlequin-postgres"
-version = "0.2.0"
+version = "0.2.1"
 description = "A Harlequin adapter for Postgres."
 authors = ["Ted Conbeer <tconbeer@users.noreply.github.com>"]
 license = "MIT"
