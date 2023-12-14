@@ -15,7 +15,7 @@ clean:
 
 .PHONY: serve
 serve:
-	harlequin -a postgres "postgresql://postgres:for-testing@localhost:5432/postgres"
+	harlequin -P None -a postgres "postgresql://postgres:for-testing@localhost:5432/postgres"
 
 .PHONY: psql
 psql:

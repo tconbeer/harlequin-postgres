@@ -70,6 +70,13 @@ def test_get_catalog(connection: HarlequinPostgresConnection) -> None:
     assert isinstance(catalog.items[0], CatalogItem)
 
 
+def test_get_completions(connection: HarlequinPostgresConnection) -> None:
+    completions = connection.get_completions()
+    test_labels = ["atomic", "greatest", "point_right", "autovacuum"]
+    filtered = list(filter(lambda x: x.label in test_labels, completions))
+    assert len(filtered) == 4
+
+
 def test_execute_ddl(connection: HarlequinPostgresConnection) -> None:
     cur = connection.execute("create table foo (a int)")
     assert cur is None

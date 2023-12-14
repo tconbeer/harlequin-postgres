@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from typing import Any, Sequence
 
-from harlequin.adapter import HarlequinAdapter, HarlequinConnection, HarlequinCursor
+from harlequin import (
+    HarlequinAdapter,
+    HarlequinCompletion,
+    HarlequinConnection,
+    HarlequinCursor,
+)
 from harlequin.catalog import Catalog, CatalogItem
 from harlequin.exception import HarlequinConnectionError, HarlequinQueryError
 from psycopg2.extensions import connection, cursor
@@ -10,6 +15,7 @@ from psycopg2.pool import ThreadedConnectionPool
 from textual_fastdatatable.backend import AutoBackendType
 
 from harlequin_postgres.cli_options import POSTGRES_OPTIONS
+from harlequin_postgres.completions import _get_completions
 
 
 class HarlequinPostgresCursor(HarlequinCursor):
@@ -134,6 +140,13 @@ class HarlequinPostgresConnection(HarlequinConnection):
                 )
             )
         return Catalog(items=db_items)
+
+    def get_completions(self) -> list[HarlequinCompletion]:
+        conn: connection = self.pool.getconn()
+        completions = _get_completions(conn)
+        self.pool.putconn(conn)
+        return completions
+        ...
 
     def _get_databases(self) -> list[tuple[str]]:
         conn: connection = self.pool.getconn()

@@ -14,7 +14,7 @@ postgres = "harlequin_postgres:HarlequinPostgresAdapter"
 
 [tool.poetry.dependencies]
 python = ">=3.8.1,<4.0"
-harlequin = "^1.4"
+harlequin = "^1.7"
 psycopg2-binary = "^2.9.9"
 
 [tool.poetry.group.dev.dependencies]
