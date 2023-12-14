@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.0] - 2023-12-14
+
 ### Features
 
 -   Implements get_completions for keywords, functions, and settings.
@@ -32,7 +34,9 @@ All notable changes to this project will be documented in this file.
 
 -   Adds a basic Postgres adapter with most common connection options.
 
-[Unreleased]: https://github.com/tconbeer/harlequin-postgres/compare/0.1.3...HEAD
+[Unreleased]: https://github.com/tconbeer/harlequin-postgres/compare/0.2.0...HEAD
+
+[0.2.0]: https://github.com/tconbeer/harlequin-postgres/compare/0.1.3...0.2.0
 
 [0.1.3]: https://github.com/tconbeer/harlequin-postgres/compare/0.1.2...0.1.3
 
