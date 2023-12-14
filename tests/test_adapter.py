@@ -75,6 +75,8 @@ def test_get_completions(connection: HarlequinPostgresConnection) -> None:
     test_labels = ["atomic", "greatest", "point_right", "autovacuum"]
     filtered = list(filter(lambda x: x.label in test_labels, completions))
     assert len(filtered) == 4
+    value_filtered = list(filter(lambda x: x.value in test_labels, completions))
+    assert len(value_filtered) == 4
 
 
 def test_execute_ddl(connection: HarlequinPostgresConnection) -> None:

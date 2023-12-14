@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+-   Lowercases inserted values for keyword completions.
+
 ## [0.2.0] - 2023-12-14
 
 ### Features
