@@ -23,7 +23,7 @@ def _get_completions(conn: connection) -> list[HarlequinCompletion]:
                 HarlequinCompletion(
                     label=keyword.lower(),
                     type_label="kw",
-                    value=keyword,
+                    value=keyword.lower(),
                     priority=100 if kind.startswith("reserved") else 1000,
                     context=None,
                 )
