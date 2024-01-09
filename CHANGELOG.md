@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+-   Sorts databases, schemas, and relations alphabetically; sorts columns ordinally. ([#10](https://github.com/tconbeer/harlequin-postgres/issues/10) - thank you [@frankbreetz](https://github.com/frankbreetz)!)
+
 ## [0.2.1] - 2023-12-14
 
 -   Lowercases inserted values for keyword completions.
