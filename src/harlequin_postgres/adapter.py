@@ -158,9 +158,10 @@ class HarlequinPostgresConnection(HarlequinConnection):
                 where
                     datistemplate is false
                     and datallowconn is true
+                order by datname asc
                 ;"""
             )
-            results = cur.fetchall()
+            results: list[tuple[str]] = cur.fetchall()
         self.pool.putconn(conn)
         return results
 
@@ -175,9 +176,10 @@ class HarlequinPostgresConnection(HarlequinConnection):
                     catalog_name = '{dbname}'
                     and schema_name != 'information_schema'
                     and schema_name not like 'pg_%'
+                order by schema_name asc
                 ;"""
             )
-            results = cur.fetchall()
+            results: list[tuple[str]] = cur.fetchall()
         self.pool.putconn(conn)
         return results
 
@@ -191,12 +193,12 @@ class HarlequinPostgresConnection(HarlequinConnection):
                 where
                     table_catalog = '{dbname}'
                     and table_schema = '{schema}'
+                order by table_name asc
                 ;"""
             )
-            results = cur.fetchall()
-            sorted_results = sorted(results, key=lambda x: x[0])
+            results: list[tuple[str, str]] = cur.fetchall()
         self.pool.putconn(conn)
-        return sorted_results
+        return results
 
     def _get_columns(
         self, dbname: str, schema: str, relation: str
@@ -211,9 +213,10 @@ class HarlequinPostgresConnection(HarlequinConnection):
                     table_catalog = '{dbname}'
                     and table_schema = '{schema}'
                     and table_name = '{relation}'
+                order by ordinal_position asc
                 ;"""
             )
-            results = cur.fetchall()
+            results: list[tuple[str, str]] = cur.fetchall()
         self.pool.putconn(conn)
         return results
 
