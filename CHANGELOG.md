@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.2] - 2024-01-09
+
 -   Sorts databases, schemas, and relations alphabetically; sorts columns ordinally. ([#10](https://github.com/tconbeer/harlequin-postgres/issues/10) - thank you [@frankbreetz](https://github.com/frankbreetz)!)
 
 ## [0.2.1] - 2023-12-14
@@ -40,7 +42,9 @@ All notable changes to this project will be documented in this file.
 
 -   Adds a basic Postgres adapter with most common connection options.
 
-[Unreleased]: https://github.com/tconbeer/harlequin-postgres/compare/0.2.1...HEAD
+[Unreleased]: https://github.com/tconbeer/harlequin-postgres/compare/0.2.2...HEAD
+
+[0.2.2]: https://github.com/tconbeer/harlequin-postgres/compare/0.2.1...0.2.2
 
 [0.2.1]: https://github.com/tconbeer/harlequin-postgres/compare/0.2.0...0.2.1
 
