@@ -194,8 +194,9 @@ class HarlequinPostgresConnection(HarlequinConnection):
                 ;"""
             )
             results = cur.fetchall()
+            sorted_results = sorted(results, key=lambda x: x[0])
         self.pool.putconn(conn)
-        return results
+        return sorted_results
 
     def _get_columns(
         self, dbname: str, schema: str, relation: str
