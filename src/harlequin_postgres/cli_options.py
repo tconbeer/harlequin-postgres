@@ -34,8 +34,7 @@ port = TextOption(
 dbname = TextOption(
     name="dbname",
     description=(
-        "Port number to connect to at the server host, or socket file name extension "
-        "for Unix-domain connections."
+        "The database name to use when connecting with the Postgres server."
     ),
     short_decls=["-d"],
     default="postgres",
