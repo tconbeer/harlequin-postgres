@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+-   Adds an implementation of `close` to gracefull close the connection pool on Harlequin shut-down.
+-   Adds support for Harlequin Transaction Modes and manual transactions.
+
 ## [0.2.2] - 2024-01-09
 
 -   Sorts databases, schemas, and relations alphabetically; sorts columns ordinally. ([#10](https://github.com/tconbeer/harlequin-postgres/issues/10) - thank you [@frankbreetz](https://github.com/frankbreetz)!)
