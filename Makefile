@@ -1,7 +1,7 @@
 .PHONY: check
 check:
 	ruff format .
-	ruff . --fix
+	ruff check . --fix
 	mypy
 	pytest
 

@@ -24,7 +24,7 @@ def test_plugin_discovery() -> None:
     PLUGIN_NAME = "postgres"
     eps = entry_points(group="harlequin.adapter")
     assert eps[PLUGIN_NAME]
-    adapter_cls = eps[PLUGIN_NAME].load()  # type: ignore
+    adapter_cls = eps[PLUGIN_NAME].load()
     assert issubclass(adapter_cls, HarlequinAdapter)
     assert adapter_cls == HarlequinPostgresAdapter
 

@@ -68,4 +68,10 @@ Many more options are available; to see the full list, run:
 harlequin --help
 ```
 
+## Manual Transactions
+
+To use Manual transaction mode, click on the label in the Run Query Bar to toggle the transaction mode from Auto to Manual.
+
+## Further Documentation
+
 For more information, see the [Harlequin Docs](https://harlequin.sh/docs/postgres/index).

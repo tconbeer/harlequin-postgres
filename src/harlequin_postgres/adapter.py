@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from itertools import cycle
 from typing import Any, Sequence
 
 from harlequin import (
@@ -7,10 +8,11 @@ from harlequin import (
     HarlequinCompletion,
     HarlequinConnection,
     HarlequinCursor,
+    HarlequinTransactionMode,
 )
 from harlequin.catalog import Catalog, CatalogItem
 from harlequin.exception import HarlequinConnectionError, HarlequinQueryError
-from psycopg2.extensions import connection, cursor
+from psycopg2.extensions import TRANSACTION_STATUS_IDLE, connection, cursor
 from psycopg2.pool import ThreadedConnectionPool
 from textual_fastdatatable.backend import AutoBackendType
 
@@ -62,23 +64,43 @@ class HarlequinPostgresConnection(HarlequinConnection):
         try:
             if conn_str and conn_str[0]:
                 self.pool: ThreadedConnectionPool = ThreadedConnectionPool(
-                    1, 5, dsn=conn_str[0], **options
+                    2, 5, dsn=conn_str[0], **options
                 )
             else:
-                self.pool = ThreadedConnectionPool(1, 5, **options)
+                self.pool = ThreadedConnectionPool(2, 5, **options)
         except Exception as e:
             raise HarlequinConnectionError(
                 msg=str(e), title="Harlequin could not connect to Postgres."
             ) from e
 
+        self._main_conn: connection = self.pool.getconn(key="main")
+        self._transaction_modes = cycle(
+            [
+                HarlequinTransactionMode(label="Auto"),
+                HarlequinTransactionMode(
+                    label="Manual",
+                    commit=self.commit,
+                    rollback=self.rollback,
+                ),
+            ]
+        )
+        self.toggle_transaction_mode()
+
     def execute(self, query: str) -> HarlequinCursor | None:
+        if (
+            self.transaction_mode.label != "Auto"
+            and self._main_conn.info.transaction_status == TRANSACTION_STATUS_IDLE
+        ):
+            cur = self._main_conn.cursor()
+            cur.execute(query="begin;")
+            cur.close()
+
         try:
-            conn: connection = self.pool.getconn(key="main")
-            with conn:  # autocommit transaction
-                cur = conn.cursor()
-                cur.execute(query=query)
+            cur = self._main_conn.cursor()
+            cur.execute(query=query)
         except Exception as e:
             cur.close()
+            self.rollback()
             raise HarlequinQueryError(
                 msg=str(e),
                 title="Harlequin encountered an error while executing your query.",
@@ -89,8 +111,12 @@ class HarlequinPostgresConnection(HarlequinConnection):
             else:
                 cur.close()
                 return None
-        finally:
-            self.pool.putconn(conn, key="main")
+
+    def commit(self) -> None:
+        self._main_conn.commit()
+
+    def rollback(self) -> None:
+        self._main_conn.rollback()
 
     def get_catalog(self) -> Catalog:
         databases = self._get_databases()
@@ -146,7 +172,30 @@ class HarlequinPostgresConnection(HarlequinConnection):
         completions = _get_completions(conn)
         self.pool.putconn(conn)
         return completions
-        ...
+
+    def close(self) -> None:
+        self.pool.putconn(self._main_conn, key="main")
+        self.pool.closeall()
+
+    @property
+    def transaction_mode(self) -> HarlequinTransactionMode:
+        return self._transaction_mode
+
+    def toggle_transaction_mode(self) -> HarlequinTransactionMode:
+        self._transaction_mode = next(self._transaction_modes)
+        self._sync_transaction_mode()
+        return self._transaction_mode
+
+    def _sync_transaction_mode(self) -> None:
+        """
+        Sync this class's transaction mode with the main connection
+        """
+        conn = self._main_conn
+        if self.transaction_mode.label == "Auto":
+            conn.autocommit = True
+            conn.commit()
+        else:
+            conn.autocommit = False
 
     def _get_databases(self) -> list[tuple[str]]:
         conn: connection = self.pool.getconn()
