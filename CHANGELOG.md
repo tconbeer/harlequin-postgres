@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.3.0] - 2024-07-22
+
 -   Adds an implementation of `close` to gracefull close the connection pool on Harlequin shut-down.
 -   Adds support for Harlequin Transaction Modes and manual transactions.
 
@@ -45,7 +47,9 @@ All notable changes to this project will be documented in this file.
 
 -   Adds a basic Postgres adapter with most common connection options.
 
-[Unreleased]: https://github.com/tconbeer/harlequin-postgres/compare/0.2.2...HEAD
+[Unreleased]: https://github.com/tconbeer/harlequin-postgres/compare/0.3.0...HEAD
+
+[0.3.0]: https://github.com/tconbeer/harlequin-postgres/compare/0.2.2...0.3.0
 
 [0.2.2]: https://github.com/tconbeer/harlequin-postgres/compare/0.2.1...0.2.2
 
