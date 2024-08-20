@@ -4,10 +4,10 @@ import csv
 from pathlib import Path
 
 from harlequin import HarlequinCompletion
-from psycopg2.extensions import connection
+from psycopg import Connection
 
 
-def _get_completions(conn: connection) -> list[HarlequinCompletion]:
+def _get_completions(conn: Connection) -> list[HarlequinCompletion]:
     completions: list[HarlequinCompletion] = []
 
     # source: https://www.postgresql.org/docs/current/sql-keywords-appendix.html
