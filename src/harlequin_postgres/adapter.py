@@ -13,6 +13,7 @@ from harlequin import (
 from harlequin.catalog import Catalog, CatalogItem
 from harlequin.exception import HarlequinConnectionError, HarlequinQueryError
 from psycopg import Connection, Cursor, conninfo
+from psycopg.errors import QueryCanceled
 from psycopg.pq import TransactionStatus
 from psycopg_pool import ConnectionPool
 from textual_fastdatatable.backend import AutoBackendType
@@ -25,13 +26,16 @@ class HarlequinPostgresCursor(HarlequinCursor):
     def __init__(self, conn: HarlequinPostgresConnection, cur: Cursor) -> None:
         self.conn = conn
         self.cur = cur
+        # we need to copy the description from the cursor in case the results are
+        # fetched and the cursor is closed before columns() is called.
+        assert cur.description is not None
+        self.description = cur.description.copy()
         self._limit: int | None = None
 
     def columns(self) -> list[tuple[str, str]]:
-        assert self.cur.description is not None
         return [
             (col.name, self.conn._get_short_type_from_oid(col.type_code))
-            for col in self.cur.description
+            for col in self.description
         ]
 
     def set_limit(self, limit: int) -> HarlequinPostgresCursor:
@@ -44,6 +48,8 @@ class HarlequinPostgresCursor(HarlequinCursor):
                 return self.cur.fetchall()
             else:
                 return self.cur.fetchmany(self._limit)
+        except QueryCanceled:
+            return []
         except Exception as e:
             raise HarlequinQueryError(
                 msg=str(e),
@@ -124,6 +130,9 @@ class HarlequinPostgresConnection(HarlequinConnection):
         try:
             cur = self._main_conn.cursor()
             cur.execute(query=query)
+        except QueryCanceled:
+            cur.close()
+            return None
         except Exception as e:
             cur.close()
             self.rollback()
@@ -137,6 +146,9 @@ class HarlequinPostgresConnection(HarlequinConnection):
             else:
                 cur.close()
                 return None
+            
+    def cancel(self) -> None:
+        self._main_conn.cancel_safe()
 
     def commit(self) -> None:
         self._main_conn.commit()
@@ -414,6 +426,7 @@ class HarlequinPostgresConnection(HarlequinConnection):
 
 class HarlequinPostgresAdapter(HarlequinAdapter):
     ADAPTER_OPTIONS = POSTGRES_OPTIONS
+    IMPLEMENTS_CANCEL = True
 
     def __init__(
         self,

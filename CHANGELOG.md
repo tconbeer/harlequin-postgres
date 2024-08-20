@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 -   Upgrades client library to `psycopg3` (from `psycopg2`).
 -   Adds an implementation of `connection_id` to improve catalog and history persistence.
+-   Implements `cancel()` to interrupt in-flight queries.
 
 ## [0.3.0] - 2024-07-22
 
