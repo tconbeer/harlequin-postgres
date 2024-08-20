@@ -4,9 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+-   Upgrades client library to `psycopg3` (from `psycopg2`).
+-   Adds an implementation of `connection_id` to improve catalog and history persistence.
+
 ## [0.3.0] - 2024-07-22
 
--   Adds an implementation of `close` to gracefull close the connection pool on Harlequin shut-down.
+-   Adds an implementation of `close` to gracefully close the connection pool on Harlequin shut-down.
 -   Adds support for Harlequin Transaction Modes and manual transactions.
 
 ## [0.2.2] - 2024-01-09

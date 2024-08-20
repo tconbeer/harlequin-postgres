@@ -12,8 +12,9 @@ from harlequin import (
 )
 from harlequin.catalog import Catalog, CatalogItem
 from harlequin.exception import HarlequinConnectionError, HarlequinQueryError
-from psycopg2.extensions import TRANSACTION_STATUS_IDLE, connection, cursor
-from psycopg2.pool import ThreadedConnectionPool
+from psycopg import Connection, Cursor, conninfo
+from psycopg.pq import TransactionStatus
+from psycopg_pool import ConnectionPool
 from textual_fastdatatable.backend import AutoBackendType
 
 from harlequin_postgres.cli_options import POSTGRES_OPTIONS
@@ -21,7 +22,7 @@ from harlequin_postgres.completions import _get_completions
 
 
 class HarlequinPostgresCursor(HarlequinCursor):
-    def __init__(self, conn: HarlequinPostgresConnection, cur: cursor) -> None:
+    def __init__(self, conn: HarlequinPostgresConnection, cur: Cursor) -> None:
         self.conn = conn
         self.cur = cur
         self._limit: int | None = None
@@ -62,18 +63,43 @@ class HarlequinPostgresConnection(HarlequinConnection):
     ) -> None:
         self.init_message = init_message
         try:
-            if conn_str and conn_str[0]:
-                self.pool: ThreadedConnectionPool = ThreadedConnectionPool(
-                    2, 5, dsn=conn_str[0], **options
-                )
-            else:
-                self.pool = ThreadedConnectionPool(2, 5, **options)
+            self.conn_info = conninfo.conninfo_to_dict(
+                conninfo=conn_str[0] if conn_str else "", **options
+            )
+        except Exception as e:
+            raise HarlequinConnectionError(
+                msg=str(e),
+                title=(
+                    "Harlequin could not connect to Postgres. "
+                    "Invalid connection string."
+                ),
+            ) from e
+        try:
+            raw_timeout = self.conn_info.get("connect_timeout")
+            timeout = float(raw_timeout) if raw_timeout is not None else 30.0
+        except (TypeError, ValueError) as e:
+            raise HarlequinConnectionError(
+                msg=str(e),
+                title=(
+                    "Harlequin could not connect to Postgres. "
+                    "Invalid value for connection_timeout."
+                ),
+            ) from e
+        try:
+            self.pool: ConnectionPool = ConnectionPool(
+                conninfo=conn_str[0] if conn_str and conn_str[0] else "",
+                min_size=2,
+                max_size=5,
+                kwargs=options,
+                open=True,
+                timeout=timeout,
+            )
+            self._main_conn: Connection = self.pool.getconn()
         except Exception as e:
             raise HarlequinConnectionError(
                 msg=str(e), title="Harlequin could not connect to Postgres."
             ) from e
 
-        self._main_conn: connection = self.pool.getconn(key="main")
         self._transaction_modes = cycle(
             [
                 HarlequinTransactionMode(label="Auto"),
@@ -89,7 +115,7 @@ class HarlequinPostgresConnection(HarlequinConnection):
     def execute(self, query: str) -> HarlequinCursor | None:
         if (
             self.transaction_mode.label != "Auto"
-            and self._main_conn.info.transaction_status == TRANSACTION_STATUS_IDLE
+            and self._main_conn.info.transaction_status == TransactionStatus.IDLE
         ):
             cur = self._main_conn.cursor()
             cur.execute(query="begin;")
@@ -168,14 +194,14 @@ class HarlequinPostgresConnection(HarlequinConnection):
         return Catalog(items=db_items)
 
     def get_completions(self) -> list[HarlequinCompletion]:
-        conn: connection = self.pool.getconn()
+        conn: Connection = self.pool.getconn()
         completions = _get_completions(conn)
         self.pool.putconn(conn)
         return completions
 
     def close(self) -> None:
-        self.pool.putconn(self._main_conn, key="main")
-        self.pool.closeall()
+        self.pool.putconn(self._main_conn)
+        self.pool.close()
 
     @property
     def transaction_mode(self) -> HarlequinTransactionMode:
@@ -198,7 +224,7 @@ class HarlequinPostgresConnection(HarlequinConnection):
             conn.autocommit = False
 
     def _get_databases(self) -> list[tuple[str]]:
-        conn: connection = self.pool.getconn()
+        conn: Connection = self.pool.getconn()
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -215,7 +241,7 @@ class HarlequinPostgresConnection(HarlequinConnection):
         return results
 
     def _get_schemas(self, dbname: str) -> list[tuple[str]]:
-        conn: connection = self.pool.getconn()
+        conn: Connection = self.pool.getconn()
         with conn.cursor() as cur:
             cur.execute(
                 f"""
@@ -233,7 +259,7 @@ class HarlequinPostgresConnection(HarlequinConnection):
         return results
 
     def _get_relations(self, dbname: str, schema: str) -> list[tuple[str, str]]:
-        conn: connection = self.pool.getconn()
+        conn: Connection = self.pool.getconn()
         with conn.cursor() as cur:
             cur.execute(
                 f"""
@@ -252,7 +278,7 @@ class HarlequinPostgresConnection(HarlequinConnection):
     def _get_columns(
         self, dbname: str, schema: str, relation: str
     ) -> list[tuple[str, str]]:
-        conn: connection = self.pool.getconn()
+        conn: Connection = self.pool.getconn()
         with conn.cursor() as cur:
             cur.execute(
                 f"""
@@ -400,14 +426,14 @@ class HarlequinPostgresAdapter(HarlequinAdapter):
         passfile: str | None = None,
         require_auth: str | None = None,
         channel_binding: str | None = None,
-        connect_timeout: int | None = None,
+        connect_timeout: int | float | None = None,
         sslmode: str | None = None,
         sslcert: str | None = None,
         sslkey: str | None = None,
         **_: Any,
     ) -> None:
         self.conn_str = conn_str
-        self.options = {
+        self.options: dict[str, str | int | None] = {
             "host": host,
             "port": port,
             "dbname": dbname,
@@ -416,11 +442,29 @@ class HarlequinPostgresAdapter(HarlequinAdapter):
             "passfile": passfile,
             "require_auth": require_auth,
             "channel_binding": channel_binding,
-            "connect_timeout": connect_timeout,
+            "connect_timeout": connect_timeout,  # type: ignore[dict-item]
             "sslmode": sslmode,
             "sslcert": sslcert,
             "sslkey": sslkey,
         }
+
+    @property
+    def connection_id(self) -> str | None:
+        """
+        Use a simplified connection string, with only the host, port, and database
+        """
+        try:
+            conn_info = conninfo.conninfo_to_dict(
+                conninfo=self.conn_str[0] if self.conn_str else "",
+                **self.options,
+            )
+        except Exception:
+            return None
+
+        host = conn_info.get("host", "localhost")
+        port = conn_info.get("port", "5432")
+        dbname = conn_info.get("dbname", "postgres")
+        return f"{host}:{port}/{dbname}"
 
     def connect(self) -> HarlequinPostgresConnection:
         if len(self.conn_str) > 1:

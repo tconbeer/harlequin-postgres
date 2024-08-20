@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import sys
 from typing import Generator
 
-import psycopg2
+import psycopg
 import pytest
 from harlequin.adapter import HarlequinAdapter, HarlequinConnection, HarlequinCursor
 from harlequin.catalog import Catalog, CatalogItem
@@ -40,27 +42,61 @@ def test_init_extra_kwargs() -> None:
     ).connect()
 
 
-def test_connect_raises_connection_error() -> None:
+@pytest.mark.parametrize(
+    "conn_str",
+    [
+        ("foo",),
+        ("host=foo",),
+        ("postgresql://admin:pass@foo:5432/db",),
+    ],
+)
+def test_connect_raises_connection_error(conn_str: tuple[str]) -> None:
     with pytest.raises(HarlequinConnectionError):
-        _ = HarlequinPostgresAdapter(conn_str=("foo",)).connect()
+        _ = HarlequinPostgresAdapter(conn_str=conn_str, connect_timeout=0.1).connect()
+
+
+@pytest.mark.parametrize(
+    "conn_str,options,expected",
+    [
+        (("",), {}, "localhost:5432/postgres"),
+        (("host=foo",), {}, "foo:5432/postgres"),
+        (("postgresql://foo",), {}, "foo:5432/postgres"),
+        (("postgresql://foo",), {"port": 5431}, "foo:5431/postgres"),
+        (("postgresql://foo/mydb",), {"port": 5431}, "foo:5431/mydb"),
+        (("postgresql://admin:pass@foo/mydb",), {"port": 5431}, "foo:5431/mydb"),
+        (("postgresql://admin:pass@foo:5431/mydb",), {}, "foo:5431/mydb"),
+    ],
+)
+def test_connection_id(
+    conn_str: tuple[str], options: dict[str, int | float | str | None], expected: str
+) -> None:
+    adapter = HarlequinPostgresAdapter(
+        conn_str=conn_str,
+        **options,  # type: ignore[arg-type]
+    )
+    assert adapter.connection_id == expected
 
 
 @pytest.fixture
 def connection() -> Generator[HarlequinPostgresConnection, None, None]:
-    pgconn = psycopg2.connect(dsn=TEST_DB_CONN, dbname="postgres")
+    pgconn = psycopg.connect(conninfo=TEST_DB_CONN, dbname="postgres")
     pgconn.autocommit = True
     cur = pgconn.cursor()
     cur.execute("drop database if exists test;")
     cur.execute("create database test;")
     cur.close()
+    pgconn.close()
     conn = HarlequinPostgresAdapter(
         conn_str=(f"{TEST_DB_CONN}",), dbname="test"
     ).connect()
     yield conn
-    conn.pool.closeall()
+    conn.close()
+    pgconn = psycopg.connect(conninfo=TEST_DB_CONN, dbname="postgres")
+    pgconn.autocommit = True
     cur = pgconn.cursor()
     cur.execute("drop database if exists test;")
     cur.close()
+    pgconn.close()
 
 
 def test_get_catalog(connection: HarlequinPostgresConnection) -> None:
