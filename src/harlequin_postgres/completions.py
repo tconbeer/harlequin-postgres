@@ -31,7 +31,7 @@ def _get_completions(conn: Connection) -> list[HarlequinCompletion]:
 
     with conn.cursor() as cur:
         cur.execute(
-            """
+            r"""
             select distinct
                 routine_name as label,
                 case when routine_type is null then 'agg' else 'fn' end as type_label,

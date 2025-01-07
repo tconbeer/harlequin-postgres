@@ -146,7 +146,7 @@ class HarlequinPostgresConnection(HarlequinConnection):
             else:
                 cur.close()
                 return None
-            
+
     def cancel(self) -> None:
         self._main_conn.cancel_safe()
 
