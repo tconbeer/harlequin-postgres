@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.0.0] - 2025-01-07
+
 ## [0.4.0] - 2024-08-20
 
 -   Upgrades client library to `psycopg3` (from `psycopg2`).
@@ -53,7 +55,9 @@ All notable changes to this project will be documented in this file.
 
 -   Adds a basic Postgres adapter with most common connection options.
 
-[Unreleased]: https://github.com/tconbeer/harlequin-postgres/compare/0.4.0...HEAD
+[Unreleased]: https://github.com/tconbeer/harlequin-postgres/compare/1.0.0...HEAD
+
+[1.0.0]: https://github.com/tconbeer/harlequin-postgres/compare/0.4.0...1.0.0
 
 [0.4.0]: https://github.com/tconbeer/harlequin-postgres/compare/0.3.0...0.4.0
 
