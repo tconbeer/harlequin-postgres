@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ## [1.0.0] - 2025-01-07
 
+-  Drops support for Python 3.8
+-  Adds support for Python 3.13
+-  Adds support for Harlequin 2.X
+
 ## [0.4.0] - 2024-08-20
 
 -   Upgrades client library to `psycopg3` (from `psycopg2`).
