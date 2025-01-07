@@ -13,8 +13,8 @@ packages = [
 postgres = "harlequin_postgres:HarlequinPostgresAdapter"
 
 [tool.poetry.dependencies]
-python = ">=3.8.1,<4.0"
-harlequin = "^1.20"
+python = ">=3.9,<3.14"
+harlequin = ">=1.20,<3"
 psycopg = { version = "^3.2", extras = ["binary", "pool"]}
 
 [tool.poetry.group.dev.dependencies]
@@ -31,13 +31,13 @@ build-backend = "poetry.core.masonry.api"
 
 
 [tool.ruff]
-target-version = "py38"
+target-version = "py39"
 
 [tool.ruff.lint]
 select = ["A", "B", "E", "F", "I"]
 
 [tool.mypy]
-python_version = "3.8"
+python_version = "3.9"
 files = [
     "src/**/*.py",
     "tests/**/*.py",

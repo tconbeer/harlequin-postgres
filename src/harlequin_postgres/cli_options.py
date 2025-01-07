@@ -56,7 +56,7 @@ passfile = PathOption(
     name="passfile",
     description=(
         "Specifies the name of the file used to store passwords. Defaults to "
-        "~/.pgpass, or %APPDATA%\postgresql\pgpass.conf on Windows. (No error is "
+        r"~/.pgpass, or %APPDATA%\postgresql\pgpass.conf on Windows. (No error is "
         "reported if this file does not exist.)"
     ),
     resolve_path=True,
