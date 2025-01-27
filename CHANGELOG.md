@@ -4,14 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
--  This adapter now lazy-loads the catalog, which will dramatically improve the catalog performance for large databases with thousands of objects.
--  This adapter now implements interactions for catalog items, like dropping tables, setting the search path, etc.
+## [1.1.0] - 2025-01-27
+
+-   This adapter now lazy-loads the catalog, which will dramatically improve the catalog performance for large databases with thousands of objects.
+-   This adapter now implements interactions for catalog items, like dropping tables, setting the search path, etc.
 
 ## [1.0.0] - 2025-01-07
 
--  Drops support for Python 3.8
--  Adds support for Python 3.13
--  Adds support for Harlequin 2.X
+-   Drops support for Python 3.8
+-   Adds support for Python 3.13
+-   Adds support for Harlequin 2.X
 
 ## [0.4.0] - 2024-08-20
 
@@ -62,7 +64,9 @@ All notable changes to this project will be documented in this file.
 
 -   Adds a basic Postgres adapter with most common connection options.
 
-[Unreleased]: https://github.com/tconbeer/harlequin-postgres/compare/1.0.0...HEAD
+[Unreleased]: https://github.com/tconbeer/harlequin-postgres/compare/1.1.0...HEAD
+
+[1.1.0]: https://github.com/tconbeer/harlequin-postgres/compare/1.0.0...1.1.0
 
 [1.0.0]: https://github.com/tconbeer/harlequin-postgres/compare/0.4.0...1.0.0
 
