@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+-  This adapter now lazy-loads the catalog, which will dramatically improve the catalog performance for large databases with thousands of objects.
+-  This adapter now implements interactions for catalog items, like dropping tables, setting the search path, etc.
+
 ## [1.0.0] - 2025-01-07
 
 -  Drops support for Python 3.8

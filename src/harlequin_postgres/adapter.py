@@ -18,6 +18,7 @@ from psycopg.pq import TransactionStatus
 from psycopg_pool import ConnectionPool
 from textual_fastdatatable.backend import AutoBackendType
 
+from harlequin_postgres.catalog import DatabaseCatalogItem
 from harlequin_postgres.cli_options import POSTGRES_OPTIONS
 from harlequin_postgres.completions import _get_completions
 
@@ -34,7 +35,7 @@ class HarlequinPostgresCursor(HarlequinCursor):
 
     def columns(self) -> list[tuple[str, str]]:
         return [
-            (col.name, self.conn._get_short_type_from_oid(col.type_code))
+            (col.name, self.conn._short_column_type_from_oid(col.type_code))
             for col in self.description
         ]
 
@@ -158,51 +159,10 @@ class HarlequinPostgresConnection(HarlequinConnection):
 
     def get_catalog(self) -> Catalog:
         databases = self._get_databases()
-        db_items: list[CatalogItem] = []
-        for (db,) in databases:
-            schemas = self._get_schemas(db)
-            schema_items: list[CatalogItem] = []
-            for (schema,) in schemas:
-                relations = self._get_relations(db, schema)
-                rel_items: list[CatalogItem] = []
-                for rel, rel_type in relations:
-                    cols = self._get_columns(db, schema, rel)
-                    col_items = [
-                        CatalogItem(
-                            qualified_identifier=f'"{db}"."{schema}"."{rel}"."{col}"',
-                            query_name=f'"{col}"',
-                            label=col,
-                            type_label=self._get_short_type(col_type),
-                        )
-                        for col, col_type in cols
-                    ]
-                    rel_items.append(
-                        CatalogItem(
-                            qualified_identifier=f'"{db}"."{schema}"."{rel}"',
-                            query_name=f'"{db}"."{schema}"."{rel}"',
-                            label=rel,
-                            type_label="v" if rel_type == "VIEW" else "t",
-                            children=col_items,
-                        )
-                    )
-                schema_items.append(
-                    CatalogItem(
-                        qualified_identifier=f'"{db}"."{schema}"',
-                        query_name=f'"{db}"."{schema}"',
-                        label=schema,
-                        type_label="s",
-                        children=rel_items,
-                    )
-                )
-            db_items.append(
-                CatalogItem(
-                    qualified_identifier=f'"{db}"',
-                    query_name=f'"{db}"',
-                    label=db,
-                    type_label="db",
-                    children=schema_items,
-                )
-            )
+        db_items: list[CatalogItem] = [
+            DatabaseCatalogItem.from_label(label=db, connection=self)
+            for (db,) in databases
+        ]
         return Catalog(items=db_items)
 
     def get_completions(self) -> list[HarlequinCompletion]:
@@ -308,7 +268,7 @@ class HarlequinPostgresConnection(HarlequinConnection):
         return results
 
     @staticmethod
-    def _get_short_type(type_name: str) -> str:
+    def _short_column_type(type_name: str) -> str:
         MAPPING = {
             "bigint": "##",
             "bigserial": "##",
@@ -354,7 +314,7 @@ class HarlequinPostgresConnection(HarlequinConnection):
         return MAPPING.get(type_name.split("(")[0].split(" ")[0], "?")
 
     @staticmethod
-    def _get_short_type_from_oid(oid: int) -> str:
+    def _short_column_type_from_oid(oid: int) -> str:
         MAPPING = {
             16: "t/f",
             17: "b",
