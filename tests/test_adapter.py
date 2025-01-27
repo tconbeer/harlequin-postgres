@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import sys
-from typing import Generator
 
-import psycopg
 import pytest
 from harlequin.adapter import HarlequinAdapter, HarlequinConnection, HarlequinCursor
 from harlequin.catalog import Catalog, CatalogItem
@@ -75,28 +73,6 @@ def test_connection_id(
         **options,  # type: ignore[arg-type]
     )
     assert adapter.connection_id == expected
-
-
-@pytest.fixture
-def connection() -> Generator[HarlequinPostgresConnection, None, None]:
-    pgconn = psycopg.connect(conninfo=TEST_DB_CONN, dbname="postgres")
-    pgconn.autocommit = True
-    cur = pgconn.cursor()
-    cur.execute("drop database if exists test;")
-    cur.execute("create database test;")
-    cur.close()
-    pgconn.close()
-    conn = HarlequinPostgresAdapter(
-        conn_str=(f"{TEST_DB_CONN}",), dbname="test"
-    ).connect()
-    yield conn
-    conn.close()
-    pgconn = psycopg.connect(conninfo=TEST_DB_CONN, dbname="postgres")
-    pgconn.autocommit = True
-    cur = pgconn.cursor()
-    cur.execute("drop database if exists test;")
-    cur.close()
-    pgconn.close()
 
 
 def test_get_catalog(connection: HarlequinPostgresConnection) -> None:
