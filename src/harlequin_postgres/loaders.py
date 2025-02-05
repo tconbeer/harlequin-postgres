@@ -86,7 +86,7 @@ class InfTimestamptzBinaryLoader(TimestamptzBinaryLoader):
             raise e
 
 
-InfLoaders: list[tuple[str, type["Loader"]]] = [
+INF_LOADERS: list[tuple[str, type["Loader"]]] = [
     ("date", InfDateLoader),
     ("date", InfDateBinaryLoader),
     ("timestamp", InfTimestampLoader),
@@ -102,5 +102,5 @@ def register_inf_loaders() -> None:
     registry, so that any connections created afterwards will use
     the updated loaders (that allow infinity date/timestamps)
     """
-    for type_name, loader in InfLoaders:
+    for type_name, loader in INF_LOADERS:
         psycopg.adapters.register_loader(type_name, loader)
