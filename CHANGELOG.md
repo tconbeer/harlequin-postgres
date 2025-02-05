@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ## [1.1.1] - 2025-02-05
 
+-   This adapter now supports `infinity` and `-infinity` dates and timestamps by loading their values as `date[time].max` or `date[time].min` ([tconbeer/harlequin#690](https://github.com/tconbeer/harlequin/issues/690)).
+
 ## [1.1.0] - 2025-01-27
 
 -   This adapter now lazy-loads the catalog, which will dramatically improve the catalog performance for large databases with thousands of objects.
