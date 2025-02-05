@@ -21,6 +21,7 @@ from textual_fastdatatable.backend import AutoBackendType
 from harlequin_postgres.catalog import DatabaseCatalogItem
 from harlequin_postgres.cli_options import POSTGRES_OPTIONS
 from harlequin_postgres.completions import _get_completions
+from harlequin_postgres.loaders import register_inf_loaders
 
 
 class HarlequinPostgresCursor(HarlequinCursor):
@@ -53,7 +54,7 @@ class HarlequinPostgresCursor(HarlequinCursor):
             return []
         except Exception as e:
             raise HarlequinQueryError(
-                msg=str(e),
+                msg=f"{e.__class__.__name__}: {e}",
                 title="Harlequin encountered an error while executing your query.",
             ) from e
         finally:
@@ -445,5 +446,8 @@ class HarlequinPostgresAdapter(HarlequinAdapter):
                 "Cannot provide multiple connection strings to the Postgres adapter. "
                 f"{self.conn_str}"
             )
+        # before creating the connection, register updated type adapters, so
+        # all subsequent connections will use those adapters
+        register_inf_loaders()
         conn = HarlequinPostgresConnection(self.conn_str, options=self.options)
         return conn

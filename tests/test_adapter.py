@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from datetime import date, datetime
 
 import pytest
 from harlequin.adapter import HarlequinAdapter, HarlequinConnection, HarlequinCursor
@@ -130,3 +131,28 @@ def test_set_limit(connection: HarlequinPostgresConnection) -> None:
 def test_execute_raises_query_error(connection: HarlequinPostgresConnection) -> None:
     with pytest.raises(HarlequinQueryError):
         _ = connection.execute("sel;")
+
+
+def test_inf_timestamps(connection: HarlequinPostgresConnection) -> None:
+    cur = connection.execute(
+        """select
+            'infinity'::date,
+            'infinity'::timestamp,
+            'infinity'::timestamptz,
+            '-infinity'::date,
+            '-infinity'::timestamp,
+            '-infinity'::timestamptz
+        """
+    )
+    assert cur is not None
+    data = cur.fetchall()
+    assert data == [
+        (
+            date.max,
+            datetime.max,
+            datetime.max,
+            date.min,
+            datetime.min,
+            datetime.min,
+        )
+    ]
