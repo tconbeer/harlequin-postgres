@@ -13,7 +13,13 @@ from harlequin_postgres.interactions import (
     execute_drop_view_statement,
     execute_use_statement,
     insert_columns_at_cursor,
+    show_describe_relation,
+    show_describe_table_constraints,
+    show_describe_table_indexes,
+    show_list_indexes,
+    show_list_objects,
     show_select_star,
+    show_view_definition,
 )
 
 if TYPE_CHECKING:
@@ -49,6 +55,7 @@ class RelationCatalogItem(InteractiveCatalogItem["HarlequinPostgresConnection"])
     INTERACTIONS = [
         ("Insert Columns at Cursor", insert_columns_at_cursor),
         ("Preview Data", show_select_star),
+        ("Describe Relation (\\d+)", show_describe_relation),
     ]
     parent: "SchemaCatalogItem" | None = None
 
@@ -70,6 +77,7 @@ class RelationCatalogItem(InteractiveCatalogItem["HarlequinPostgresConnection"])
 
 class ViewCatalogItem(RelationCatalogItem):
     INTERACTIONS = RelationCatalogItem.INTERACTIONS + [
+        ("Show View Definition", show_view_definition),
         ("Drop View", execute_drop_view_statement),
     ]
 
@@ -93,6 +101,8 @@ class ViewCatalogItem(RelationCatalogItem):
 
 class TableCatalogItem(RelationCatalogItem):
     INTERACTIONS = RelationCatalogItem.INTERACTIONS + [
+        ("Describe Indexes", show_describe_table_indexes),
+        ("Describe Constraints", show_describe_table_constraints),
         ("Drop Table", execute_drop_table_statement),
     ]
 
@@ -115,10 +125,6 @@ class TableCatalogItem(RelationCatalogItem):
 
 
 class TempTableCatalogItem(TableCatalogItem):
-    INTERACTIONS = RelationCatalogItem.INTERACTIONS + [
-        ("Drop Table", execute_drop_table_statement),
-    ]
-
     @classmethod
     def from_parent(
         cls,
@@ -164,6 +170,8 @@ class ForeignCatalogItem(TableCatalogItem):
 class SchemaCatalogItem(InteractiveCatalogItem["HarlequinPostgresConnection"]):
     INTERACTIONS = [
         ("Set Search Path", execute_use_statement),
+        ("List Relations (\\d+)", show_list_objects),
+        ("List Indexes (\\di+)", show_list_indexes),
         ("Drop Schema", execute_drop_schema_statement),
     ]
     parent: "DatabaseCatalogItem" | None = None
@@ -224,6 +232,8 @@ class SchemaCatalogItem(InteractiveCatalogItem["HarlequinPostgresConnection"]):
 
 class DatabaseCatalogItem(InteractiveCatalogItem["HarlequinPostgresConnection"]):
     INTERACTIONS = [
+        ("List Relations (\\d+)", show_list_objects),
+        ("List Indexes (\\di+)", show_list_indexes),
         ("Drop Database", execute_drop_database_statement),
     ]
 
