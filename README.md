@@ -1,60 +1,25 @@
 # harlequin-postgres
 
-This repo provides the Harlequin adapter for Postgres.
+This project provides the Harlequin adapter for Postgres. For more information, see [harlequin.sh](https://harlequin.sh/docs/postgres/index).
+
 
 ## Installation
 
-`harlequin-postgres` depends on `harlequin`, so installing this package will also install Harlequin.
-
-### Using pip
-
-To install this adapter into an activated virtual environment:
-```bash
-pip install harlequin-postgres
-```
-
-### Using poetry
+You must install the `harlequin-postgres` package into the same environment as `harlequin`. The best and easiest way to do this is to use `uv` to install Harlequin with the `postgres` extra:
 
 ```bash
-poetry add harlequin-postgres
+uv tool install 'harlequin[postgres]'
 ```
 
-### Using pipx
+## Using Harlequin with Postgres
 
-If you do not already have Harlequin installed:
-
-```bash
-pip install harlequin-postgres
-```
-
-If you would like to add the Postgres adapter to an existing Harlequin installation:
-
-```bash
-pipx inject harlequin harlequin-postgres
-```
-
-### As an Extra
-Alternatively, you can install Harlequin with the `postgres` extra:
-
-```bash
-pip install harlequin[postgres]
-```
-
-```bash
-poetry add harlequin[postgres]
-```
-
-```bash
-pipx install harlequin[postgres]
-```
-
-## Usage and Configuration
-
-You can open Harlequin with the Postgres adapter by selecting it with the `-a` option and passing a [Posgres DSN](https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING):
+To connect to a Postgres database, run Harlequin with the `-a postgres` option and pass a [Posgres DSN](https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING) as an argument:
 
 ```bash
 harlequin -a postgres "postgres://my-user:my-pass@localhost:5432/my-database"
 ```
+
+## Connection Options
 
 You can also pass all or parts of the connection string as separate options. The following is equivalent to the above DSN:
 
@@ -62,11 +27,33 @@ You can also pass all or parts of the connection string as separate options. The
 harlequin -a postgres -h localhost -p 5432 -U my-user --password my-pass -d my-database
 ```
 
-Many more options are available; to see the full list, run:
+The supported connection options are:
 
-```bash
+```
+host
+port
+dbname
+user
+password
+passfile
+require_auth
+channel_binding
+connect_timeout
+sslmode
+sslcert
+sslkey
+```
+
+For descriptions of each option, run:
+
+```
 harlequin --help
 ```
+
+## Environment Variables
+
+Harlequin's Postgres driver will load connection information from the standard `PG*` environment variables. Any options supplied at the command-line will override environment variables.
+
 
 ## Manual Transactions
 
