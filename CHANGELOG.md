@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.2.0] - 2025-02-27
+
 -   Adds interactions to list relations, indexes, constraints, and to describe relations (similar to psql's `\d+`) ([tconbeer/harlequin#586](https://github.com/tconbeer/harlequin/discussions/586) - thank you [@JPFrancoia](https://github.com/JPFrancoia)!).
 
 ## [1.1.1] - 2025-02-05
@@ -70,7 +72,9 @@ All notable changes to this project will be documented in this file.
 
 -   Adds a basic Postgres adapter with most common connection options.
 
-[Unreleased]: https://github.com/tconbeer/harlequin-postgres/compare/1.1.1...HEAD
+[Unreleased]: https://github.com/tconbeer/harlequin-postgres/compare/1.2.0...HEAD
+
+[1.2.0]: https://github.com/tconbeer/harlequin-postgres/compare/1.1.1...1.2.0
 
 [1.1.1]: https://github.com/tconbeer/harlequin-postgres/compare/1.1.0...1.1.1
 
