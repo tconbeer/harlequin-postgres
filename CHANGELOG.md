@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+-   Adds interactions to list relations, indexes, constraints, and to describe relations (similar to psql's `\d+`) ([tconbeer/harlequin#586](https://github.com/tconbeer/harlequin/discussions/586) - thank you [@JPFrancoia](https://github.com/JPFrancoia)!).
+
 ## [1.1.1] - 2025-02-05
 
 -   This adapter now supports `infinity` and `-infinity` dates and timestamps by loading their values as `date[time].max` or `date[time].min` ([tconbeer/harlequin#690](https://github.com/tconbeer/harlequin/issues/690)).
