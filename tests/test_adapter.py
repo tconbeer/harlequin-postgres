@@ -7,12 +7,11 @@ import pytest
 from harlequin.adapter import HarlequinAdapter, HarlequinConnection, HarlequinCursor
 from harlequin.catalog import Catalog, CatalogItem
 from harlequin.exception import HarlequinConnectionError, HarlequinQueryError
-from textual_fastdatatable.backend import create_backend
-
 from harlequin_postgres.adapter import (
     HarlequinPostgresAdapter,
     HarlequinPostgresConnection,
 )
+from textual_fastdatatable.backend import create_backend
 
 if sys.version_info < (3, 10):
     from importlib_metadata import entry_points
@@ -157,3 +156,10 @@ def test_inf_timestamps(connection: HarlequinPostgresConnection) -> None:
             datetime.min,
         )
     ]
+
+
+def test_closed_conn_raises_right_error(connection: HarlequinPostgresConnection) -> None:
+    connection._main_conn.close()
+
+    with pytest.raises(HarlequinQueryError):
+        connection.execute("select 1")

@@ -5,7 +5,6 @@ from typing import Generator
 
 import psycopg
 import pytest
-
 from harlequin_postgres.adapter import (
     HarlequinPostgresAdapter,
     HarlequinPostgresConnection,

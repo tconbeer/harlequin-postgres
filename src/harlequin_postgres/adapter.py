@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from contextlib import suppress
 from itertools import cycle
 from typing import Any, Sequence
 
@@ -14,7 +13,7 @@ from harlequin import (
 from harlequin.catalog import Catalog, CatalogItem
 from harlequin.exception import HarlequinConnectionError, HarlequinQueryError
 from psycopg import Connection, Cursor, conninfo
-from psycopg.errors import OperationalError, QueryCanceled
+from psycopg.errors import QueryCanceled
 from psycopg.pq import TransactionStatus
 from psycopg_pool import ConnectionPool
 from textual_fastdatatable.backend import AutoBackendType
@@ -137,11 +136,19 @@ class HarlequinPostgresConnection(HarlequinConnection):
             cur.close()
             return None
         except Exception as e:
-            cur.close()
-            with suppress(OperationalError):
+            msg_suffix = ""
+            try:
+                cur.close()
                 self.rollback()
+            except Exception:
+                # likely connection is closed; error messages
+                # can be cryptic, so help the user.
+                msg_suffix = (
+                    "\n\nYou may need to restart Harlequin to reconnect to the "
+                    "database."
+                )
             raise HarlequinQueryError(
-                msg=str(e),
+                msg=f"{e}{msg_suffix}",
                 title="Harlequin encountered an error while executing your query.",
             ) from e
         else:
