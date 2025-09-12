@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.2.2] - 2025-09-12
+
 -   Adds materialized views to the Data Catalog. Note: Harlequin can only show Materialized Views in the catalog for the currently-connected database ([#40](https://github.com/tconbeer/harlequin-postgres/issues/40) - thank you [@PadenZach](https://github.com/PadenZach)!).
 
 ## [1.2.1] - 2025-09-12
@@ -78,7 +80,9 @@ All notable changes to this project will be documented in this file.
 
 -   Adds a basic Postgres adapter with most common connection options.
 
-[Unreleased]: https://github.com/tconbeer/harlequin-postgres/compare/1.2.1...HEAD
+[Unreleased]: https://github.com/tconbeer/harlequin-postgres/compare/1.2.2...HEAD
+
+[1.2.2]: https://github.com/tconbeer/harlequin-postgres/compare/1.2.1...1.2.2
 
 [1.2.1]: https://github.com/tconbeer/harlequin-postgres/compare/1.2.0...1.2.1
 
