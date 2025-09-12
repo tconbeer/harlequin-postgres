@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.2.1] - 2025-09-12
+
 -   Fixes a bug where Harlequin would crash if you execute a query against a closed/lost database connection ([#42](https://github.com/tconbeer/harlequin-postgres/issues/42)).
 
 ## [1.2.0] - 2025-02-27
@@ -74,7 +76,9 @@ All notable changes to this project will be documented in this file.
 
 -   Adds a basic Postgres adapter with most common connection options.
 
-[Unreleased]: https://github.com/tconbeer/harlequin-postgres/compare/1.2.0...HEAD
+[Unreleased]: https://github.com/tconbeer/harlequin-postgres/compare/1.2.1...HEAD
+
+[1.2.1]: https://github.com/tconbeer/harlequin-postgres/compare/1.2.0...1.2.1
 
 [1.2.0]: https://github.com/tconbeer/harlequin-postgres/compare/1.1.1...1.2.0
 
