@@ -166,6 +166,38 @@ class ForeignCatalogItem(TableCatalogItem):
         )
 
 
+class MaterializedViewCatalogItem(RelationCatalogItem):
+    @classmethod
+    def from_parent(
+        cls,
+        parent: "SchemaCatalogItem",
+        label: str,
+    ) -> "MaterializedViewCatalogItem":
+        relation_query_name = f'"{parent.label}"."{label}"'
+        relation_qualified_identifier = f'{parent.qualified_identifier}."{label}"'
+        return cls(
+            qualified_identifier=relation_qualified_identifier,
+            query_name=relation_query_name,
+            label=label,
+            type_label="mv",
+            connection=parent.connection,
+            parent=parent,
+        )
+
+    def fetch_children(self) -> list[ColumnCatalogItem]:
+        if self.parent is None or self.parent.parent is None or self.connection is None:
+            return []
+        result = self.connection._get_mv_cols(self.parent.label, self.label)
+        return [
+            ColumnCatalogItem.from_parent(
+                parent=self,
+                label=column_name,
+                type_label=self.connection._short_column_type(column_type),
+            )
+            for column_name, column_type in result
+        ]
+
+
 @dataclass
 class SchemaCatalogItem(InteractiveCatalogItem["HarlequinPostgresConnection"]):
     INTERACTIONS = [
@@ -226,6 +258,14 @@ class SchemaCatalogItem(InteractiveCatalogItem["HarlequinPostgresConnection"]):
                         label=table_label,
                     )
                 )
+
+        for (mv_label,) in self.connection._get_mvs(self.label):
+            children.append(
+                MaterializedViewCatalogItem.from_parent(
+                    parent=self,
+                    label=mv_label,
+                )
+            )
 
         return children
 

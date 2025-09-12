@@ -226,15 +226,16 @@ class HarlequinPostgresConnection(HarlequinConnection):
         conn: Connection = self.pool.getconn()
         with conn.cursor() as cur:
             cur.execute(
-                f"""
+                """
                 select schema_name
                 from information_schema.schemata
                 where
-                    catalog_name = '{dbname}'
+                    catalog_name = %s
                     and schema_name != 'information_schema'
-                    and schema_name not like 'pg_%'
+                    and schema_name not like 'pg_%%'
                 order by schema_name asc
-                ;"""
+                ;""",
+                (dbname,),
             )
             results: list[tuple[str]] = cur.fetchall()
         self.pool.putconn(conn)
@@ -244,16 +245,35 @@ class HarlequinPostgresConnection(HarlequinConnection):
         conn: Connection = self.pool.getconn()
         with conn.cursor() as cur:
             cur.execute(
-                f"""
+                """
                 select table_name, table_type
                 from information_schema.tables
                 where
-                    table_catalog = '{dbname}'
-                    and table_schema = '{schema}'
+                    table_catalog = %s
+                    and table_schema = %s
                 order by table_name asc
-                ;"""
+                ;""",
+                (dbname, schema),
             )
             results: list[tuple[str, str]] = cur.fetchall()
+        self.pool.putconn(conn)
+        return results
+
+    # only works for the currently-connected db
+    def _get_mvs(self, schema: str) -> list[tuple[str]]:
+        conn: Connection = self.pool.getconn()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                select matviewname
+                from pg_matviews
+                where
+                    schemaname = %s
+                order by matviewname asc
+                ;""",
+                (schema,),
+            )
+            results: list[tuple[str]] = cur.fetchall()
         self.pool.putconn(conn)
         return results
 
@@ -263,15 +283,40 @@ class HarlequinPostgresConnection(HarlequinConnection):
         conn: Connection = self.pool.getconn()
         with conn.cursor() as cur:
             cur.execute(
-                f"""
+                """
                 select column_name, data_type
                 from information_schema.columns
                 where
-                    table_catalog = '{dbname}'
-                    and table_schema = '{schema}'
-                    and table_name = '{relation}'
+                    table_catalog = %s
+                    and table_schema = %s
+                    and table_name = %s
                 order by ordinal_position asc
-                ;"""
+                ;""",
+                (dbname, schema, relation),
+            )
+            results: list[tuple[str, str]] = cur.fetchall()
+        self.pool.putconn(conn)
+        return results
+
+    def _get_mv_cols(self, schema: str, mv: str) -> list[tuple[str, str]]:
+        conn: Connection = self.pool.getconn()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                select 
+                    a.attname,
+                    pg_catalog.format_type(a.atttypid, a.atttypmod)
+                from pg_attribute a
+                join pg_class t on a.attrelid = t.oid
+                join pg_namespace s on t.relnamespace = s.oid
+                where 
+                    a.attnum > 0 
+                    and not a.attisdropped
+                    and s.nspname = %s
+                    and t.relname = %s
+                order by a.attnum;
+                ;""",
+                (schema, mv),
             )
             results: list[tuple[str, str]] = cur.fetchall()
         self.pool.putconn(conn)

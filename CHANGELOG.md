@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+-   Adds materialized views to the Data Catalog. Note: Harlequin can only show Materialized Views in the catalog for the currently-connected database ([#40](https://github.com/tconbeer/harlequin-postgres/issues/40) - thank you [@PadenZach](https://github.com/PadenZach)!).
+
 ## [1.2.1] - 2025-09-12
 
 -   Fixes a bug where Harlequin would crash if you execute a query against a closed/lost database connection ([#42](https://github.com/tconbeer/harlequin-postgres/issues/42)).

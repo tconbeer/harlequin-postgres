@@ -4,6 +4,7 @@ from harlequin_postgres.adapter import HarlequinPostgresConnection
 from harlequin_postgres.catalog import (
     ColumnCatalogItem,
     DatabaseCatalogItem,
+    MaterializedViewCatalogItem,
     RelationCatalogItem,
     SchemaCatalogItem,
     TableCatalogItem,
@@ -22,6 +23,8 @@ def connection_with_objects(
     connection.execute("create schema two")
     connection.execute("create view two.qux as select * from one.foo")
     connection.execute("create schema three")
+    connection.execute("create schema four")
+    connection.execute("create materialized view four.foo as select * from one.foo")
     # the original connection fixture will clean this up.
     return connection
 
@@ -90,3 +93,20 @@ def test_catalog(connection_with_objects: HarlequinPostgresConnection) -> None:
 
     three_children = schema_three_item.fetch_children()
     assert not three_children
+
+    [schema_four_item] = filter(lambda item: item.label == "four", schema_items)
+    assert isinstance(schema_four_item, SchemaCatalogItem)
+    assert not schema_four_item.children
+    assert not schema_four_item.loaded
+
+    mview_items = schema_four_item.fetch_children()
+    assert all(isinstance(item, MaterializedViewCatalogItem) for item in mview_items)
+
+    [foo_mv_item] = filter(lambda item: item.label == "foo", mview_items)
+    assert isinstance(foo_mv_item, MaterializedViewCatalogItem)
+    assert not foo_mv_item.children
+    assert not foo_mv_item.loaded
+
+    foo_mv_cols = foo_mv_item.fetch_children()
+    assert foo_mv_cols
+    assert all(isinstance(item, ColumnCatalogItem) for item in foo_mv_cols)
