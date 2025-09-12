@@ -156,3 +156,10 @@ def test_inf_timestamps(connection: HarlequinPostgresConnection) -> None:
             datetime.min,
         )
     ]
+
+
+def test_closed_conn_raises_right_error(connection: HarlequinPostgresConnection) -> None:
+    connection._main_conn.close()
+
+    with pytest.raises(HarlequinQueryError):
+        connection.execute("select 1")

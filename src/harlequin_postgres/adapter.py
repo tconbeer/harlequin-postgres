@@ -136,10 +136,19 @@ class HarlequinPostgresConnection(HarlequinConnection):
             cur.close()
             return None
         except Exception as e:
-            cur.close()
-            self.rollback()
+            msg_suffix = ""
+            try:
+                cur.close()
+                self.rollback()
+            except Exception:
+                # likely connection is closed; error messages
+                # can be cryptic, so help the user.
+                msg_suffix = (
+                    "\n\nYou may need to restart Harlequin to reconnect to the "
+                    "database."
+                )
             raise HarlequinQueryError(
-                msg=str(e),
+                msg=f"{e}{msg_suffix}",
                 title="Harlequin encountered an error while executing your query.",
             ) from e
         else:

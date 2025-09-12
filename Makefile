@@ -1,9 +1,9 @@
 .PHONY: check
 check:
-	ruff format .
-	ruff check . --fix
-	mypy
-	pytest
+	poetry run ruff format .
+	poetry run ruff check . --fix
+	poetry run mypy
+	poetry run pytest
 
 .PHONY: init
 init:
@@ -15,11 +15,11 @@ clean:
 
 .PHONY: serve
 serve:
-	harlequin -P None -a postgres "postgresql://postgres:for-testing@localhost:5432/postgres"
+	poetry run harlequin -P None -a postgres "postgresql://postgres:for-testing@localhost:5432/postgres"
 
 .PHONY: psql
 psql:
 	PGPASSWORD=for-testing psql -h localhost -p 5432 -U postgres -E
 
 profile.html: $(wildcard src/**/*.py)
-	pyinstrument -r html -o profile.html --from-path harlequin -a postgres "postgresql://postgres:for-testing@localhost:5432/postgres"
+	poetry run pyinstrument -r html -o profile.html --from-path harlequin -a postgres "postgresql://postgres:for-testing@localhost:5432/postgres"

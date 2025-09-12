@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+-   Fixes a bug where Harlequin would crash if you execute a query against a closed/lost database connection ([#42](https://github.com/tconbeer/harlequin-postgres/issues/42)).
+
 ## [1.2.0] - 2025-02-27
 
 -   Adds interactions to list relations, indexes, constraints, and to describe relations (similar to psql's `\d+`) ([tconbeer/harlequin#586](https://github.com/tconbeer/harlequin/discussions/586) - thank you [@JPFrancoia](https://github.com/JPFrancoia)!).
