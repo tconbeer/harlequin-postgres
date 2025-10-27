@@ -13,7 +13,7 @@ packages = [
 postgres = "harlequin_postgres:HarlequinPostgresAdapter"
 
 [tool.poetry.dependencies]
-python = ">=3.9,<3.14"
+python = ">=3.9"
 harlequin = ">=1.25,<3"
 psycopg = { version = "^3.2", extras = ["binary", "pool"]}
 
