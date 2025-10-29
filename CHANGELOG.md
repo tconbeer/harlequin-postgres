@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+-   Drops support for Python 3.9; adds support for Python 3.14.
+-   This project is now built using uv.
+
 ## [1.2.2] - 2025-09-12
 
 -   Adds materialized views to the Data Catalog. Note: Harlequin can only show Materialized Views in the catalog for the currently-connected database ([#40](https://github.com/tconbeer/harlequin-postgres/issues/40) - thank you [@PadenZach](https://github.com/PadenZach)!).

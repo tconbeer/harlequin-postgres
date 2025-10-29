@@ -1,5 +1,6 @@
 import pytest
 from harlequin.catalog import InteractiveCatalogItem
+
 from harlequin_postgres.adapter import HarlequinPostgresConnection
 from harlequin_postgres.catalog import (
     ColumnCatalogItem,
