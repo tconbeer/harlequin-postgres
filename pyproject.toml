@@ -7,10 +7,12 @@ authors = [
 ]
 license = "MIT"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
     "harlequin>=1.25,<3",
     "psycopg[binary,pool]>=3.2,<4",
+    # temp pin to allow prerelease versions
+    "duckdb>=1.4.2.dev0; python_version>='3.14'"
 ]
 
 [project.entry-points."harlequin.adapter"]
@@ -18,6 +20,7 @@ postgres = "harlequin_postgres:HarlequinPostgresAdapter"
 
 [dependency-groups]
 dev = [
+    "harlequin==2.4.0",
     "ruff>=0.5,<1",
     "pytest>=7.4.3,<8",
     "mypy>=1.10.0,<2",
@@ -26,25 +29,37 @@ dev = [
     "pyinstrument>=4.6.1,<5",
 ]
 
-[tool.poetry]
-dependencies.python = ">=3.9,<3.14"
-packages = [
-    { include = "harlequin_postgres", from = "src" }
-]
 
 [build-system]
-requires = ["poetry-core>=2"]
-build-backend = "poetry.core.masonry.api"
 
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+
+[tool.hatch.build.targets.wheel]
+
+packages = [
+    "src/harlequin_postgres",
+]
+
+[tool.hatch.build.targets.sdist]
+
+only-include = [
+    "src",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "pyproject.toml"
+]
 
 [tool.ruff]
-target-version = "py39"
+target-version = "py310"
 
 [tool.ruff.lint]
 select = ["A", "B", "E", "F", "I"]
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.10"
 files = [
     "src/**/*.py",
     "tests/**/*.py",
