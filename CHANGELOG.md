@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-04-19
+
 ## [1.3.0] - 2025-10-29
 
 - Drops support for Python 3.9; adds support for Python 3.14.
@@ -85,7 +87,8 @@ All notable changes to this project will be documented in this file.
 
 - Adds a basic Postgres adapter with most common connection options.
 
-[unreleased]: https://github.com/tconbeer/harlequin-postgres/compare/1.3.0...HEAD
+[unreleased]: https://github.com/tconbeer/harlequin-postgres/compare/1.3.1...HEAD
+[1.3.1]: https://github.com/tconbeer/harlequin-postgres/compare/1.3.0...1.3.1
 [1.3.0]: https://github.com/tconbeer/harlequin-postgres/compare/1.2.2...1.3.0
 [1.2.2]: https://github.com/tconbeer/harlequin-postgres/compare/1.2.1...1.2.2
 [1.2.1]: https://github.com/tconbeer/harlequin-postgres/compare/1.2.0...1.2.1
