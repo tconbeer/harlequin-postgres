@@ -232,7 +232,7 @@ class HarlequinPostgresConnection(HarlequinConnection):
                 where
                     catalog_name = %s
                     and schema_name != 'information_schema'
-                    and schema_name not like 'pg_%%'
+                    and schema_name not like 'pg\\_%%' escape '\\'
                 order by schema_name asc
                 ;""",
                 (dbname,),
