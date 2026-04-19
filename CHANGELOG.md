@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ## [1.3.1] - 2026-04-19
 
+- Fixes a bug causing user schemas starting with "pg" to be filtered out of the catalog. (#50)
+
 ## [1.3.0] - 2025-10-29
 
 - Drops support for Python 3.9; adds support for Python 3.14.
