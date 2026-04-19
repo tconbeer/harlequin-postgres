@@ -84,6 +84,14 @@ def test_get_catalog(connection: HarlequinPostgresConnection) -> None:
     assert isinstance(catalog.items[0], CatalogItem)
 
 
+def test_get_schemas_includes_user_schema_named_pgmq(
+    connection: HarlequinPostgresConnection,
+) -> None:
+    connection.execute("create schema pgmq")
+    schemas = connection._get_schemas("test")
+    assert ("pgmq",) in schemas
+
+
 def test_get_completions(connection: HarlequinPostgresConnection) -> None:
     completions = connection.get_completions()
     test_labels = ["atomic", "greatest", "point_right", "autovacuum"]
