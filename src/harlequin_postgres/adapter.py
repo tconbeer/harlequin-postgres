@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import re
 from itertools import cycle
 from typing import Any, Sequence
+from urllib.parse import quote
 
 from harlequin import (
     HarlequinAdapter,
@@ -22,6 +24,45 @@ from harlequin_postgres.catalog import DatabaseCatalogItem
 from harlequin_postgres.cli_options import POSTGRES_OPTIONS
 from harlequin_postgres.completions import _get_completions
 from harlequin_postgres.loaders import register_inf_loaders
+
+_URI_RE = re.compile(
+    r"^(postgres(?:ql)?://)(?:([^:@/?#]*)(?::([^@]*))?@)?(.*)$",
+    re.DOTALL,
+)
+
+
+def _quote_uri_userinfo(conn_str: str) -> str:
+    """Percent-encode the user/password in a postgres:// URI so that
+    unencoded special characters (e.g. '%', '@', '/') don't break parsing.
+    """
+    if not conn_str:
+        return conn_str
+    m = _URI_RE.match(conn_str)
+    if not m:
+        return conn_str
+    scheme, user, password, rest = m.groups()
+    if user is None and password is None:
+        return conn_str
+    userinfo = quote(user, safe="") if user else ""
+    if password is not None:
+        userinfo += ":" + quote(password, safe="")
+    return f"{scheme}{userinfo}@{rest}"
+
+
+def _conninfo_to_dict_lenient(
+    conn_str: str, **options: Any
+) -> tuple[str, dict[str, Any]]:
+    """Parse conn_str via psycopg.conninfo.conninfo_to_dict; on failure,
+    retry once after percent-encoding the URI userinfo. Returns the
+    (possibly fixed) conn_str alongside the parsed dict.
+    """
+    try:
+        return conn_str, conninfo.conninfo_to_dict(conninfo=conn_str, **options)
+    except Exception:
+        fixed = _quote_uri_userinfo(conn_str)
+        if fixed == conn_str:
+            raise
+        return fixed, conninfo.conninfo_to_dict(conninfo=fixed, **options)
 
 
 class HarlequinPostgresCursor(HarlequinCursor):
@@ -70,9 +111,10 @@ class HarlequinPostgresConnection(HarlequinConnection):
         options: dict[str, Any],
     ) -> None:
         self.init_message = init_message
+        raw_conn_str = conn_str[0] if conn_str else ""
         try:
-            self.conn_info = conninfo.conninfo_to_dict(
-                conninfo=conn_str[0] if conn_str else "", **options
+            normalized_conn_str, self.conn_info = _conninfo_to_dict_lenient(
+                raw_conn_str, **options
             )
         except Exception as e:
             raise HarlequinConnectionError(
@@ -95,7 +137,7 @@ class HarlequinPostgresConnection(HarlequinConnection):
             ) from e
         try:
             self.pool: ConnectionPool = ConnectionPool(
-                conninfo=conn_str[0] if conn_str and conn_str[0] else "",
+                conninfo=normalized_conn_str,
                 min_size=2,
                 max_size=5,
                 kwargs=options,
@@ -482,8 +524,8 @@ class HarlequinPostgresAdapter(HarlequinAdapter):
         Use a simplified connection string, with only the host, port, and database
         """
         try:
-            conn_info = conninfo.conninfo_to_dict(
-                conninfo=self.conn_str[0] if self.conn_str else "",
+            _, conn_info = _conninfo_to_dict_lenient(
+                self.conn_str[0] if self.conn_str else "",
                 **self.options,
             )
         except Exception:
