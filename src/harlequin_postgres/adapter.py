@@ -96,14 +96,19 @@ class HarlequinPostgresConnection(HarlequinConnection):
                 ),
             ) from e
         self._conn_str = conn_str[0] if conn_str and conn_str[0] else ""
-        self._pool_options = options
+        self._pool_options = {
+            key: value for key, value in options.items() if value is not None
+        }
         self._pool_timeout = timeout
-        self._active_dbname = str(self.conn_info.get("dbname") or "postgres")
         self._pools: dict[str, ConnectionPool] = {}
         try:
-            self.pool = self._create_pool(self._active_dbname)
-            self._pools[self._active_dbname] = self.pool
+            initial_dbname = self.conn_info.get("dbname")
+            self.pool = self._create_pool(
+                str(initial_dbname) if initial_dbname is not None else None
+            )
             self._main_conn: Connection = self.pool.getconn()
+            self._active_dbname = self._main_conn.info.dbname
+            self._pools[self._active_dbname] = self.pool
         except Exception as e:
             raise HarlequinConnectionError(
                 msg=str(e), title="Harlequin could not connect to Postgres."
@@ -138,10 +143,19 @@ class HarlequinPostgresConnection(HarlequinConnection):
 
         previous_pool = self.pool
         previous_conn = self._main_conn
+        conn: Connection | None = None
+        pool: ConnectionPool | None = None
         try:
             pool = self._get_pool(dbname)
-            conn: Connection = pool.getconn()
+            conn = pool.getconn()
+            self._sync_transaction_mode(conn)
+            previous_pool.putconn(previous_conn)
         except Exception as e:
+            if pool is not None and conn is not None:
+                try:
+                    pool.putconn(conn)
+                except Exception:
+                    pass
             raise HarlequinConnectionError(
                 msg=str(e),
                 title="Harlequin could not switch Postgres databases.",
@@ -150,8 +164,6 @@ class HarlequinPostgresConnection(HarlequinConnection):
         self.pool = pool
         self._main_conn = conn
         self._active_dbname = dbname
-        self._sync_transaction_mode()
-        previous_pool.putconn(previous_conn)
 
     def execute(self, query: str) -> HarlequinCursor | None:
         if (
@@ -226,23 +238,29 @@ class HarlequinPostgresConnection(HarlequinConnection):
         self._sync_transaction_mode()
         return self._transaction_mode
 
-    def _sync_transaction_mode(self) -> None:
+    def _sync_transaction_mode(self, conn: Connection | None = None) -> None:
         """
-        Sync this class's transaction mode with the main connection
+        Sync this class's transaction mode with a connection.
         """
-        conn = self._main_conn
+        if conn is None:
+            conn = self._main_conn
         if self.transaction_mode.label == "Auto":
             conn.autocommit = True
             conn.commit()
         else:
             conn.autocommit = False
 
-    def _create_pool(self, dbname: str) -> ConnectionPool:
+    def _create_pool(self, dbname: str | None) -> ConnectionPool:
+        kwargs = (
+            self._pool_options
+            if dbname is None
+            else {**self._pool_options, "dbname": dbname}
+        )
         return ConnectionPool(
             conninfo=self._conn_str,
             min_size=2,
             max_size=5,
-            kwargs={**self._pool_options, "dbname": dbname},
+            kwargs=kwargs,
             open=True,
             timeout=self._pool_timeout,
         )

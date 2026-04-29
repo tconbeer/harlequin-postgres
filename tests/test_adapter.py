@@ -8,6 +8,7 @@ import pytest
 from harlequin.adapter import HarlequinAdapter, HarlequinConnection, HarlequinCursor
 from harlequin.catalog import Catalog, CatalogItem
 from harlequin.exception import HarlequinConnectionError, HarlequinQueryError
+from psycopg.pq import TransactionStatus
 from textual_fastdatatable.backend import create_backend
 
 import harlequin_postgres.adapter as postgres_adapter
@@ -25,7 +26,13 @@ TEST_DB_CONN = "postgresql://postgres:for-testing@localhost:5432"
 
 
 class FakeInfo:
-    transaction_status = 0
+    def __init__(
+        self,
+        dbname: str,
+        transaction_status: TransactionStatus = TransactionStatus.IDLE,
+    ) -> None:
+        self.dbname = dbname
+        self.transaction_status = transaction_status
 
 
 class FakeCursor:
@@ -59,12 +66,13 @@ class FakeConnection:
     def __init__(self, dbname: str) -> None:
         self.dbname = dbname
         self.autocommit = False
-        self.info = FakeInfo()
+        self.info = FakeInfo(dbname)
         self.commits = 0
         self.rollbacks = 0
         self.closed = False
         self.cursor_calls = 0
         self.last_cursor: FakeCursor | None = None
+        self.fail_commit = False
 
     def cursor(self) -> FakeCursor:
         self.cursor_calls += 1
@@ -72,6 +80,8 @@ class FakeConnection:
         return self.last_cursor
 
     def commit(self) -> None:
+        if self.fail_commit:
+            raise RuntimeError(f"cannot sync transaction mode for {self.dbname}")
         self.commits += 1
 
     def rollback(self) -> None:
@@ -84,6 +94,8 @@ class FakeConnection:
 class FakePool:
     pools: list["FakePool"] = []
     fail_databases: set[str] = set()
+    fail_getconn_databases: set[str] = set()
+    fail_putconn_databases: set[str] = set()
 
     def __init__(
         self,
@@ -94,7 +106,7 @@ class FakePool:
     ) -> None:
         self.conninfo = conninfo
         self.kwargs = kwargs or {}
-        self.dbname = str(self.kwargs.get("dbname") or "postgres")
+        self.dbname = str(self.kwargs.get("dbname") or "env_db")
         if self.dbname in self.fail_databases:
             raise RuntimeError(f"cannot connect to {self.dbname}")
         self.connection = FakeConnection(self.dbname)
@@ -104,10 +116,14 @@ class FakePool:
         self.pools.append(self)
 
     def getconn(self) -> FakeConnection:
+        if self.dbname in self.fail_getconn_databases:
+            raise RuntimeError(f"cannot borrow connection to {self.dbname}")
         self.getconn_calls += 1
         return self.connection
 
     def putconn(self, conn: FakeConnection) -> None:
+        if self.dbname in self.fail_putconn_databases:
+            raise RuntimeError(f"cannot return connection to {self.dbname}")
         self.putconn_calls.append(conn)
 
     def close(self) -> None:
@@ -118,6 +134,8 @@ class FakePool:
 def fake_pools(monkeypatch: pytest.MonkeyPatch) -> type[FakePool]:
     FakePool.pools = []
     FakePool.fail_databases = set()
+    FakePool.fail_getconn_databases = set()
+    FakePool.fail_putconn_databases = set()
     monkeypatch.setattr(postgres_adapter, "ConnectionPool", FakePool)
     return FakePool
 
@@ -125,6 +143,13 @@ def fake_pools(monkeypatch: pytest.MonkeyPatch) -> type[FakePool]:
 def make_connection() -> HarlequinPostgresConnection:
     return HarlequinPostgresConnection(
         ("postgresql://postgres:for-testing@localhost:5432/postgres",),
+        options={},
+    )
+
+
+def make_env_connection() -> HarlequinPostgresConnection:
+    return HarlequinPostgresConnection(
+        ("postgresql://postgres:for-testing@localhost:5432",),
         options={},
     )
 
@@ -211,6 +236,85 @@ def test_switch_database_preserves_active_connection_when_target_fails(
 
     assert connection._main_conn is original_conn
     assert cast(FakeConnection, connection._main_conn).dbname == "postgres"
+
+
+def test_switch_database_preserves_active_connection_when_target_checkout_fails(
+    fake_pools: type[FakePool],
+) -> None:
+    connection = make_connection()
+    original_conn = connection._main_conn
+    fake_pools.fail_getconn_databases.add("analytics")
+
+    with pytest.raises(HarlequinConnectionError):
+        connection.switch_database("analytics")
+
+    assert cast(FakePool, connection.pool) is fake_pools.pools[0]
+    assert connection._main_conn is original_conn
+    assert connection._active_dbname == "postgres"
+
+
+def test_switch_database_preserves_active_connection_when_sync_fails(
+    fake_pools: type[FakePool],
+) -> None:
+    connection = make_connection()
+    original_pool = cast(FakePool, connection.pool)
+    original_conn = connection._main_conn
+    connection.switch_database("analytics")
+    analytics_pool = cast(FakePool, connection.pool)
+    analytics_conn = cast(FakeConnection, connection._main_conn)
+    analytics_conn.fail_commit = True
+    connection.switch_database("postgres")
+
+    with pytest.raises(HarlequinConnectionError):
+        connection.switch_database("analytics")
+
+    assert cast(FakePool, connection.pool) is original_pool
+    assert connection._main_conn is original_conn
+    assert connection._active_dbname == "postgres"
+    assert analytics_pool.putconn_calls[-1] is analytics_conn
+
+
+def test_switch_database_preserves_active_connection_when_returning_previous_fails(
+    fake_pools: type[FakePool],
+) -> None:
+    connection = make_connection()
+    original_pool = cast(FakePool, connection.pool)
+    original_conn = connection._main_conn
+    fake_pools.fail_putconn_databases.add("postgres")
+
+    with pytest.raises(HarlequinConnectionError):
+        connection.switch_database("analytics")
+
+    analytics_pool = fake_pools.pools[-1]
+    assert cast(FakePool, connection.pool) is original_pool
+    assert connection._main_conn is original_conn
+    assert connection._active_dbname == "postgres"
+    assert analytics_pool.putconn_calls == [analytics_pool.connection]
+
+
+def test_switch_database_rejects_active_manual_transaction(
+    fake_pools: type[FakePool],
+) -> None:
+    connection = make_connection()
+    connection.toggle_transaction_mode()
+    cast(
+        FakeConnection, connection._main_conn
+    ).info.transaction_status = TransactionStatus.INTRANS
+
+    with pytest.raises(HarlequinConnectionError):
+        connection.switch_database("analytics")
+
+    assert len(fake_pools.pools) == 1
+    assert cast(FakeConnection, connection._main_conn).dbname == "postgres"
+
+
+def test_initial_connection_does_not_force_postgres_when_dbname_not_explicit(
+    fake_pools: type[FakePool],
+) -> None:
+    connection = make_env_connection()
+
+    assert fake_pools.pools[0].kwargs == {}
+    assert connection._active_dbname == "env_db"
 
 
 def test_get_schemas_borrows_connection_for_requested_database(
