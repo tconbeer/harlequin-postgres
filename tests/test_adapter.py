@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 from datetime import date, datetime
+from typing import cast
 
 import pytest
 from harlequin.adapter import HarlequinAdapter, HarlequinConnection, HarlequinCursor
@@ -9,6 +10,7 @@ from harlequin.catalog import Catalog, CatalogItem
 from harlequin.exception import HarlequinConnectionError, HarlequinQueryError
 from textual_fastdatatable.backend import create_backend
 
+import harlequin_postgres.adapter as postgres_adapter
 from harlequin_postgres.adapter import (
     HarlequinPostgresAdapter,
     HarlequinPostgresConnection,
@@ -20,6 +22,111 @@ else:
     from importlib.metadata import entry_points
 
 TEST_DB_CONN = "postgresql://postgres:for-testing@localhost:5432"
+
+
+class FakeInfo:
+    transaction_status = 0
+
+
+class FakeCursor:
+    description = None
+
+    def __init__(self, result: list[tuple[str]] | None = None) -> None:
+        self.result = result or []
+        self.queries: list[tuple[str, tuple[str, ...] | None]] = []
+
+    def __enter__(self) -> "FakeCursor":
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        return None
+
+    def execute(
+        self,
+        query: str,
+        params: tuple[str, ...] | None = None,
+    ) -> None:
+        self.queries.append((query, params))
+
+    def fetchall(self) -> list[tuple[str]]:
+        return self.result
+
+    def close(self) -> None:
+        return None
+
+
+class FakeConnection:
+    def __init__(self, dbname: str) -> None:
+        self.dbname = dbname
+        self.autocommit = False
+        self.info = FakeInfo()
+        self.commits = 0
+        self.rollbacks = 0
+        self.closed = False
+        self.cursor_calls = 0
+        self.last_cursor: FakeCursor | None = None
+
+    def cursor(self) -> FakeCursor:
+        self.cursor_calls += 1
+        self.last_cursor = FakeCursor(result=[("public",)])
+        return self.last_cursor
+
+    def commit(self) -> None:
+        self.commits += 1
+
+    def rollback(self) -> None:
+        self.rollbacks += 1
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class FakePool:
+    pools: list["FakePool"] = []
+    fail_databases: set[str] = set()
+
+    def __init__(
+        self,
+        conninfo: str,
+        *_: object,
+        kwargs: dict[str, object | None] | None = None,
+        **__: object,
+    ) -> None:
+        self.conninfo = conninfo
+        self.kwargs = kwargs or {}
+        self.dbname = str(self.kwargs.get("dbname") or "postgres")
+        if self.dbname in self.fail_databases:
+            raise RuntimeError(f"cannot connect to {self.dbname}")
+        self.connection = FakeConnection(self.dbname)
+        self.getconn_calls = 0
+        self.putconn_calls: list[FakeConnection] = []
+        self.closed = False
+        self.pools.append(self)
+
+    def getconn(self) -> FakeConnection:
+        self.getconn_calls += 1
+        return self.connection
+
+    def putconn(self, conn: FakeConnection) -> None:
+        self.putconn_calls.append(conn)
+
+    def close(self) -> None:
+        self.closed = True
+
+
+@pytest.fixture
+def fake_pools(monkeypatch: pytest.MonkeyPatch) -> type[FakePool]:
+    FakePool.pools = []
+    FakePool.fail_databases = set()
+    monkeypatch.setattr(postgres_adapter, "ConnectionPool", FakePool)
+    return FakePool
+
+
+def make_connection() -> HarlequinPostgresConnection:
+    return HarlequinPostgresConnection(
+        ("postgresql://postgres:for-testing@localhost:5432/postgres",),
+        options={},
+    )
 
 
 def test_plugin_discovery() -> None:
@@ -75,6 +182,50 @@ def test_connection_id(
         **options,  # type: ignore[arg-type]
     )
     assert adapter.connection_id == expected
+
+
+def test_switch_database_changes_active_connection_and_reuses_pool(
+    fake_pools: type[FakePool],
+) -> None:
+    connection = make_connection()
+
+    connection.switch_database("analytics")
+    analytics_pool = fake_pools.pools[-1]
+    connection.switch_database("postgres")
+    connection.switch_database("analytics")
+
+    assert cast(FakeConnection, connection._main_conn).dbname == "analytics"
+    assert fake_pools.pools == [fake_pools.pools[0], analytics_pool]
+    assert analytics_pool.getconn_calls == 2
+
+
+def test_switch_database_preserves_active_connection_when_target_fails(
+    fake_pools: type[FakePool],
+) -> None:
+    connection = make_connection()
+    original_conn = connection._main_conn
+    fake_pools.fail_databases.add("missing")
+
+    with pytest.raises(HarlequinConnectionError):
+        connection.switch_database("missing")
+
+    assert connection._main_conn is original_conn
+    assert cast(FakeConnection, connection._main_conn).dbname == "postgres"
+
+
+def test_get_schemas_borrows_connection_for_requested_database(
+    fake_pools: type[FakePool],
+) -> None:
+    connection = make_connection()
+
+    schemas = connection._get_schemas("analytics")
+
+    assert schemas == [("public",)]
+    assert cast(FakeConnection, connection._main_conn).dbname == "postgres"
+    analytics_pool = fake_pools.pools[-1]
+    assert analytics_pool.dbname == "analytics"
+    assert analytics_pool.getconn_calls == 1
+    assert analytics_pool.putconn_calls == [analytics_pool.connection]
 
 
 def test_get_catalog(connection: HarlequinPostgresConnection) -> None:

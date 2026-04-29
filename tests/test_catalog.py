@@ -11,6 +11,23 @@ from harlequin_postgres.catalog import (
     TableCatalogItem,
     ViewCatalogItem,
 )
+from harlequin_postgres.interactions import execute_connect_database_statement
+
+
+class FakeDriver:
+    def __init__(self) -> None:
+        self.notifications: list[tuple[str, str | None]] = []
+
+    def notify(self, message: str, severity: str | None = None) -> None:
+        self.notifications.append((message, severity))
+
+
+class FakeSwitchConnection:
+    def __init__(self) -> None:
+        self.switched_to: list[str] = []
+
+    def switch_database(self, dbname: str) -> None:
+        self.switched_to.append(dbname)
 
 
 @pytest.fixture
@@ -111,3 +128,21 @@ def test_catalog(connection_with_objects: HarlequinPostgresConnection) -> None:
     foo_mv_cols = foo_mv_item.fetch_children()
     assert foo_mv_cols
     assert all(isinstance(item, ColumnCatalogItem) for item in foo_mv_cols)
+
+
+def test_database_catalog_item_can_switch_active_database() -> None:
+    connection = FakeSwitchConnection()
+    driver = FakeDriver()
+    item = DatabaseCatalogItem.from_label(
+        label="analytics",
+        connection=connection,  # type: ignore[arg-type]
+    )
+
+    execute_connect_database_statement(item, driver)  # type: ignore[arg-type]
+
+    assert DatabaseCatalogItem.INTERACTIONS[0] == (
+        "Connect to Database",
+        execute_connect_database_statement,
+    )
+    assert connection.switched_to == ["analytics"]
+    assert driver.notifications == [("Connected to database analytics", None)]

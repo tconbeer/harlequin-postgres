@@ -77,6 +77,24 @@ def execute_drop_database_statement(
         _drop_database()
 
 
+def execute_connect_database_statement(
+    item: "DatabaseCatalogItem",
+    driver: "HarlequinDriver",
+) -> None:
+    if item.connection is None:
+        return
+    try:
+        item.connection.switch_database(item.label)
+    except HarlequinQueryError:
+        driver.notify(f"Could not connect to database {item.label}", severity="error")
+        raise
+    except Exception:
+        driver.notify(f"Could not connect to database {item.label}", severity="error")
+        raise
+    else:
+        driver.notify(f"Connected to database {item.label}")
+
+
 def execute_drop_relation_statement(
     item: "RelationCatalogItem",
     driver: "HarlequinDriver",
