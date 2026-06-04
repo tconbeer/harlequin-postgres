@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- Added handling for switching Postgres Databases on the fly without having to quit and reopen Harlequin with a different connection. ([#53](https://github.com/tconbeer/harlequin-postgres/issues/53))
+
 ## [1.3.1] - 2026-04-19
 
 - Fixes a bug causing user schemas starting with "pg" to be filtered out of the catalog. (#50)
