@@ -85,10 +85,7 @@ def execute_connect_database_statement(
         return
     try:
         item.connection.switch_database(item.label)
-    except HarlequinQueryError:
-        driver.notify(f"Could not connect to database {item.label}", severity="error")
-        raise
-    except Exception:
+    except HarlequinConnectionError:
         driver.notify(f"Could not connect to database {item.label}", severity="error")
         raise
     else:
