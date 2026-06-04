@@ -297,7 +297,7 @@ class HarlequinPostgresConnection(HarlequinConnection):
         return results
 
     def _get_schemas(self, dbname: str) -> list[tuple[str]]:
-        with self._borrow_conn(dbname) as conn, conn.cursor() as cur:
+        with self._borrow_conn() as conn, conn.cursor() as cur:
             cur.execute(
                 """
                 select schema_name
@@ -314,7 +314,7 @@ class HarlequinPostgresConnection(HarlequinConnection):
         return results
 
     def _get_relations(self, dbname: str, schema: str) -> list[tuple[str, str]]:
-        with self._borrow_conn(dbname) as conn, conn.cursor() as cur:
+        with self._borrow_conn() as conn, conn.cursor() as cur:
             cur.execute(
                 """
                 select table_name, table_type
@@ -347,7 +347,7 @@ class HarlequinPostgresConnection(HarlequinConnection):
     def _get_columns(
         self, dbname: str, schema: str, relation: str
     ) -> list[tuple[str, str]]:
-        with self._borrow_conn(dbname) as conn, conn.cursor() as cur:
+        with self._borrow_conn() as conn, conn.cursor() as cur:
             cur.execute(
                 """
                 select column_name, data_type
@@ -364,7 +364,7 @@ class HarlequinPostgresConnection(HarlequinConnection):
         return results
 
     def _get_mv_cols(self, dbname: str, schema: str, mv: str) -> list[tuple[str, str]]:
-        with self._borrow_conn(dbname) as conn, conn.cursor() as cur:
+        with self._borrow_conn() as conn, conn.cursor() as cur:
             cur.execute(
                 """
                 select 
