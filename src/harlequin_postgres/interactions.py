@@ -4,7 +4,7 @@ from textwrap import dedent
 from typing import TYPE_CHECKING, Literal, Sequence
 
 from harlequin.catalog import CatalogItem
-from harlequin.exception import HarlequinQueryError
+from harlequin.exception import HarlequinConnectionError, HarlequinQueryError
 
 if TYPE_CHECKING:
     from harlequin.driver import HarlequinDriver
@@ -75,6 +75,21 @@ def execute_drop_database_statement(
         driver.confirm_and_execute(callback=_drop_database)
     else:
         _drop_database()
+
+
+def execute_connect_database_statement(
+    item: "DatabaseCatalogItem",
+    driver: "HarlequinDriver",
+) -> None:
+    if item.connection is None:
+        return
+    try:
+        item.connection.switch_database(item.label)
+    except HarlequinConnectionError:
+        driver.notify(f"Could not connect to database {item.label}", severity="error")
+        raise
+    else:
+        driver.notify(f"Connected to database {item.label}")
 
 
 def execute_drop_relation_statement(

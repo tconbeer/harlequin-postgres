@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from harlequin.catalog import InteractiveCatalogItem
 
 from harlequin_postgres.interactions import (
+    execute_connect_database_statement,
     execute_drop_database_statement,
     execute_drop_foreign_table_statement,
     execute_drop_schema_statement,
@@ -187,7 +188,9 @@ class MaterializedViewCatalogItem(RelationCatalogItem):
     def fetch_children(self) -> list[ColumnCatalogItem]:
         if self.parent is None or self.parent.parent is None or self.connection is None:
             return []
-        result = self.connection._get_mv_cols(self.parent.label, self.label)
+        result = self.connection._get_mv_cols(
+            self.parent.parent.label, self.parent.label, self.label
+        )
         return [
             ColumnCatalogItem.from_parent(
                 parent=self,
@@ -259,7 +262,7 @@ class SchemaCatalogItem(InteractiveCatalogItem["HarlequinPostgresConnection"]):
                     )
                 )
 
-        for (mv_label,) in self.connection._get_mvs(self.label):
+        for (mv_label,) in self.connection._get_mvs(self.parent.label, self.label):
             children.append(
                 MaterializedViewCatalogItem.from_parent(
                     parent=self,
@@ -272,6 +275,7 @@ class SchemaCatalogItem(InteractiveCatalogItem["HarlequinPostgresConnection"]):
 
 class DatabaseCatalogItem(InteractiveCatalogItem["HarlequinPostgresConnection"]):
     INTERACTIONS = [
+        ("Connect to Database", execute_connect_database_statement),
         ("List Relations (\\d+)", show_list_objects),
         ("List Indexes (\\di+)", show_list_indexes),
         ("Drop Database", execute_drop_database_statement),
