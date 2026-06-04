@@ -4,7 +4,7 @@ from textwrap import dedent
 from typing import TYPE_CHECKING, Literal, Sequence
 
 from harlequin.catalog import CatalogItem
-from harlequin.exception import HarlequinQueryError
+from harlequin.exception import HarlequinConnectionError, HarlequinQueryError
 
 if TYPE_CHECKING:
     from harlequin.driver import HarlequinDriver

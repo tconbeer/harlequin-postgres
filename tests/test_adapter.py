@@ -93,6 +93,7 @@ class FakeConnection:
 
 class FakePool:
     pools: list["FakePool"] = []
+    direct_connections: list[FakeConnection] = []
     fail_databases: set[str] = set()
     fail_getconn_databases: set[str] = set()
     fail_putconn_databases: set[str] = set()
@@ -133,10 +134,21 @@ class FakePool:
 @pytest.fixture
 def fake_pools(monkeypatch: pytest.MonkeyPatch) -> type[FakePool]:
     FakePool.pools = []
+    FakePool.direct_connections = []
     FakePool.fail_databases = set()
     FakePool.fail_getconn_databases = set()
     FakePool.fail_putconn_databases = set()
     monkeypatch.setattr(postgres_adapter, "ConnectionPool", FakePool)
+
+    def fake_connect(
+        conninfo: str,
+        **kwargs: object,
+    ) -> FakeConnection:
+        conn = FakeConnection(str(kwargs.get("dbname") or "env_db"))
+        FakePool.direct_connections.append(conn)
+        return conn
+
+    monkeypatch.setattr(postgres_adapter, "connect", fake_connect, raising=False)
     return FakePool
 
 
@@ -165,13 +177,20 @@ def test_plugin_discovery() -> None:
 
 def test_connect() -> None:
     conn = HarlequinPostgresAdapter(conn_str=(TEST_DB_CONN,)).connect()
-    assert isinstance(conn, HarlequinConnection)
+    try:
+        assert isinstance(conn, HarlequinConnection)
+    finally:
+        conn.close()
 
 
 def test_init_extra_kwargs() -> None:
-    assert HarlequinPostgresAdapter(
+    conn = HarlequinPostgresAdapter(
         conn_str=(TEST_DB_CONN,), foo=1, bar="baz"
     ).connect()
+    try:
+        assert conn
+    finally:
+        conn.close()
 
 
 @pytest.mark.parametrize(
@@ -317,7 +336,18 @@ def test_initial_connection_does_not_force_postgres_when_dbname_not_explicit(
     assert connection._active_dbname == "env_db"
 
 
-def test_get_schemas_borrows_connection_for_requested_database(
+def test_init_closes_pool_when_initial_checkout_fails(
+    fake_pools: type[FakePool],
+) -> None:
+    fake_pools.fail_getconn_databases.add("postgres")
+
+    with pytest.raises(HarlequinConnectionError):
+        make_connection()
+
+    assert fake_pools.pools[0].closed is True
+
+
+def test_get_schemas_uses_uncached_connection_for_requested_database(
     fake_pools: type[FakePool],
 ) -> None:
     connection = make_connection()
@@ -326,10 +356,61 @@ def test_get_schemas_borrows_connection_for_requested_database(
 
     assert schemas == [("public",)]
     assert cast(FakeConnection, connection._main_conn).dbname == "postgres"
-    analytics_pool = fake_pools.pools[-1]
-    assert analytics_pool.dbname == "analytics"
-    assert analytics_pool.getconn_calls == 1
-    assert analytics_pool.putconn_calls == [analytics_pool.connection]
+    assert [conn.dbname for conn in fake_pools.direct_connections] == ["analytics"]
+    assert fake_pools.direct_connections[-1].closed is True
+    assert set(connection._pools) == {"postgres"}
+
+
+def test_get_relations_uses_uncached_connection_for_requested_database(
+    fake_pools: type[FakePool],
+) -> None:
+    connection = make_connection()
+
+    connection._get_relations("analytics", "public")
+
+    assert cast(FakeConnection, connection._main_conn).dbname == "postgres"
+    assert [conn.dbname for conn in fake_pools.direct_connections] == ["analytics"]
+    assert fake_pools.direct_connections[-1].closed is True
+    assert set(connection._pools) == {"postgres"}
+
+
+def test_get_mvs_uses_uncached_connection_for_requested_database(
+    fake_pools: type[FakePool],
+) -> None:
+    connection = make_connection()
+
+    connection._get_mvs("analytics", "public")
+
+    assert cast(FakeConnection, connection._main_conn).dbname == "postgres"
+    assert [conn.dbname for conn in fake_pools.direct_connections] == ["analytics"]
+    assert fake_pools.direct_connections[-1].closed is True
+    assert set(connection._pools) == {"postgres"}
+
+
+def test_get_columns_uses_uncached_connection_for_requested_database(
+    fake_pools: type[FakePool],
+) -> None:
+    connection = make_connection()
+
+    connection._get_columns("analytics", "public", "events")
+
+    assert cast(FakeConnection, connection._main_conn).dbname == "postgres"
+    assert [conn.dbname for conn in fake_pools.direct_connections] == ["analytics"]
+    assert fake_pools.direct_connections[-1].closed is True
+    assert set(connection._pools) == {"postgres"}
+
+
+def test_get_mv_cols_uses_uncached_connection_for_requested_database(
+    fake_pools: type[FakePool],
+) -> None:
+    connection = make_connection()
+
+    connection._get_mv_cols("analytics", "public", "event_rollups")
+
+    assert cast(FakeConnection, connection._main_conn).dbname == "postgres"
+    assert [conn.dbname for conn in fake_pools.direct_connections] == ["analytics"]
+    assert fake_pools.direct_connections[-1].closed is True
+    assert set(connection._pools) == {"postgres"}
 
 
 def test_get_catalog(connection: HarlequinPostgresConnection) -> None:

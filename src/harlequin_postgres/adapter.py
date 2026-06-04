@@ -14,7 +14,7 @@ from harlequin import (
 )
 from harlequin.catalog import Catalog, CatalogItem
 from harlequin.exception import HarlequinConnectionError, HarlequinQueryError
-from psycopg import Connection, Cursor, conninfo
+from psycopg import Connection, Cursor, connect, conninfo
 from psycopg.errors import QueryCanceled
 from psycopg.pq import TransactionStatus
 from psycopg_pool import ConnectionPool
@@ -101,15 +101,22 @@ class HarlequinPostgresConnection(HarlequinConnection):
         }
         self._pool_timeout = timeout
         self._pools: dict[str, ConnectionPool] = {}
+        pool: ConnectionPool | None = None
         try:
             initial_dbname = self.conn_info.get("dbname")
-            self.pool = self._create_pool(
+            pool = self._create_pool(
                 str(initial_dbname) if initial_dbname is not None else None
             )
+            self.pool = pool
             self._main_conn: Connection = self.pool.getconn()
             self._active_dbname = self._main_conn.info.dbname
             self._pools[self._active_dbname] = self.pool
         except Exception as e:
+            if pool is not None:
+                try:
+                    pool.close()
+                except Exception:
+                    pass
             raise HarlequinConnectionError(
                 msg=str(e), title="Harlequin could not connect to Postgres."
             ) from e
@@ -281,6 +288,22 @@ class HarlequinPostgresConnection(HarlequinConnection):
         finally:
             pool.putconn(conn)
 
+    @contextmanager
+    def _borrow_catalog_conn(self, dbname: str) -> Iterator[Connection]:
+        if dbname == self._active_dbname:
+            with self._borrow_conn() as conn:
+                yield conn
+            return
+
+        conn = connect(
+            conninfo=self._conn_str,
+            **{**self._pool_options, "dbname": dbname},
+        )
+        try:
+            yield conn
+        finally:
+            conn.close()
+
     def _get_databases(self) -> list[tuple[str]]:
         with self._borrow_conn() as conn, conn.cursor() as cur:
             cur.execute(
@@ -297,7 +320,7 @@ class HarlequinPostgresConnection(HarlequinConnection):
         return results
 
     def _get_schemas(self, dbname: str) -> list[tuple[str]]:
-        with self._borrow_conn() as conn, conn.cursor() as cur:
+        with self._borrow_catalog_conn(dbname) as conn, conn.cursor() as cur:
             cur.execute(
                 """
                 select schema_name
@@ -314,7 +337,7 @@ class HarlequinPostgresConnection(HarlequinConnection):
         return results
 
     def _get_relations(self, dbname: str, schema: str) -> list[tuple[str, str]]:
-        with self._borrow_conn() as conn, conn.cursor() as cur:
+        with self._borrow_catalog_conn(dbname) as conn, conn.cursor() as cur:
             cur.execute(
                 """
                 select table_name, table_type
@@ -330,7 +353,7 @@ class HarlequinPostgresConnection(HarlequinConnection):
         return results
 
     def _get_mvs(self, dbname: str, schema: str) -> list[tuple[str]]:
-        with self._borrow_conn(dbname) as conn, conn.cursor() as cur:
+        with self._borrow_catalog_conn(dbname) as conn, conn.cursor() as cur:
             cur.execute(
                 """
                 select matviewname
@@ -347,7 +370,7 @@ class HarlequinPostgresConnection(HarlequinConnection):
     def _get_columns(
         self, dbname: str, schema: str, relation: str
     ) -> list[tuple[str, str]]:
-        with self._borrow_conn() as conn, conn.cursor() as cur:
+        with self._borrow_catalog_conn(dbname) as conn, conn.cursor() as cur:
             cur.execute(
                 """
                 select column_name, data_type
@@ -364,7 +387,7 @@ class HarlequinPostgresConnection(HarlequinConnection):
         return results
 
     def _get_mv_cols(self, dbname: str, schema: str, mv: str) -> list[tuple[str, str]]:
-        with self._borrow_conn() as conn, conn.cursor() as cur:
+        with self._borrow_catalog_conn(dbname) as conn, conn.cursor() as cur:
             cur.execute(
                 """
                 select 
