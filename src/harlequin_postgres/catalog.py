@@ -294,7 +294,47 @@ class SchemaCatalogItem(InteractiveCatalogItem["HarlequinPostgresConnection"]):
                 )
             )
 
+        self._attach_columns(children)
         return children
+
+    def _attach_columns(self, children: list[RelationCatalogItem]) -> None:
+        """
+        Fetches the columns for every table and view in this schema in a
+        single round trip and attaches them to the child items, so each
+        relation doesn't need its own query (a big win on high-latency
+        connections). Materialized views are not covered by
+        information_schema and keep their per-item lazy load, as does any
+        relation missing from the batch result.
+        """
+        if self.parent is None or self.connection is None:
+            return
+        try:
+            all_columns = self.connection._get_all_columns(
+                self.parent.label, self.label
+            )
+        except Exception:
+            # fall back to per-relation lazy loading
+            return
+        columns_by_relation: dict[str, list[tuple[str, str]]] = {}
+        for relation_name, column_name, column_type in all_columns:
+            columns_by_relation.setdefault(relation_name, []).append(
+                (column_name, column_type)
+            )
+        for child in children:
+            if isinstance(child, MaterializedViewCatalogItem):
+                continue
+            columns = columns_by_relation.get(child.label)
+            if columns is None:
+                continue
+            child.children = [
+                ColumnCatalogItem.from_parent(
+                    parent=child,
+                    label=column_name,
+                    type_label=self.connection._short_column_type(column_type),
+                )
+                for column_name, column_type in columns
+            ]
+            child.loaded = True
 
 
 class DatabaseCatalogItem(InteractiveCatalogItem["HarlequinPostgresConnection"]):

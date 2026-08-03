@@ -575,6 +575,29 @@ class HarlequinPostgresConnection(HarlequinConnection):
         self.pool.putconn(conn)
         return results
 
+    def _get_all_columns(self, dbname: str, schema: str) -> list[tuple[str, str, str]]:
+        """
+        Returns (relation_name, column_name, data_type) for every table and
+        view in the schema, in one round trip. Materialized views are not
+        included (information_schema does not cover them).
+        """
+        conn: Connection = self.pool.getconn()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                select table_name, column_name, data_type
+                from information_schema.columns
+                where
+                    table_catalog = %s
+                    and table_schema = %s
+                order by table_name asc, ordinal_position asc
+                ;""",
+                (dbname, schema),
+            )
+            results: list[tuple[str, str, str]] = cur.fetchall()
+        self.pool.putconn(conn)
+        return results
+
     def _get_columns(
         self, dbname: str, schema: str, relation: str
     ) -> list[tuple[str, str]]:

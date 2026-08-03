@@ -61,11 +61,18 @@ def test_catalog(connection_with_objects: HarlequinPostgresConnection) -> None:
 
     [foo_item] = filter(lambda item: item.label == "foo", table_items)
     assert isinstance(foo_item, TableCatalogItem)
-    assert not foo_item.children
-    assert not foo_item.loaded
+    # columns are batch-loaded for the whole schema when the schema's
+    # children are fetched, so tables arrive with their columns attached.
+    assert foo_item.children
+    assert foo_item.loaded
+    assert all(isinstance(item, ColumnCatalogItem) for item in foo_item.children)
 
     foo_column_items = foo_item.fetch_children()
     assert all(isinstance(item, ColumnCatalogItem) for item in foo_column_items)
+    # the batch-loaded columns match a direct fetch
+    assert [item.label for item in foo_item.children] == [
+        item.label for item in foo_column_items
+    ]
 
     [schema_two_item] = filter(lambda item: item.label == "two", schema_items)
     assert isinstance(schema_two_item, SchemaCatalogItem)
@@ -77,8 +84,9 @@ def test_catalog(connection_with_objects: HarlequinPostgresConnection) -> None:
 
     [qux_item] = filter(lambda item: item.label == "qux", view_items)
     assert isinstance(qux_item, ViewCatalogItem)
-    assert not qux_item.children
-    assert not qux_item.loaded
+    # views get batch-loaded columns, too
+    assert qux_item.children
+    assert qux_item.loaded
 
     qux_column_items = qux_item.fetch_children()
     assert all(isinstance(item, ColumnCatalogItem) for item in qux_column_items)
@@ -109,6 +117,8 @@ def test_catalog(connection_with_objects: HarlequinPostgresConnection) -> None:
 
     [foo_mv_item] = filter(lambda item: item.label == "foo", mview_items)
     assert isinstance(foo_mv_item, MaterializedViewCatalogItem)
+    # materialized views are not covered by information_schema, so they
+    # keep their per-item lazy load
     assert not foo_mv_item.children
     assert not foo_mv_item.loaded
 
