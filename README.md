@@ -58,7 +58,7 @@ This adapter supports Harlequin's `--read-only` option:
 harlequin --read-only -a postgres "postgres://my-user:my-pass@localhost:5432/my-database"
 ```
 
-Harlequin connects with `default_transaction_read_only=on`, so the server rejects any statement that would write. The setting is applied to every connection this adapter opens, and it is enforced in both Auto and Manual transaction modes. If the server does not report that setting as `on` after connecting, Harlequin refuses to start.
+Every connection this adapter opens is configured with `set session characteristics as transaction read only`, so the server rejects any statement that would write, in both Auto and Manual transaction modes. If the server does not report `default_transaction_read_only` as `on` after connecting, Harlequin refuses to start.
 
 ## Environment Variables
 

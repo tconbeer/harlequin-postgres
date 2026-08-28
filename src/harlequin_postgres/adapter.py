@@ -23,13 +23,6 @@ from harlequin_postgres.cli_options import POSTGRES_OPTIONS
 from harlequin_postgres.completions import _get_completions
 from harlequin_postgres.loaders import register_inf_loaders
 
-READ_ONLY_CONN_OPTION = "-c default_transaction_read_only=on"
-"""
-Libpq allows arbitrary command-line options to be passed to the server at
-connection time; ``default_transaction_read_only`` is the setting Postgres
-enforces read-only sessions with.
-"""
-
 
 class HarlequinPostgresCursor(HarlequinCursor):
     def __init__(self, conn: HarlequinPostgresConnection, cur: Cursor) -> None:
@@ -102,21 +95,12 @@ class HarlequinPostgresConnection(HarlequinConnection):
                     "Invalid value for connection_timeout."
                 ),
             ) from e
-        pool_kwargs = dict(options)
-        if self.read_only:
-            # read_only is not a libpq conninfo key, so it can never be passed
-            # to psycopg as an option; instead we ask the server to make every
-            # transaction on every connection in the pool read-only.
-            pool_kwargs["options"] = self._read_only_conn_options(
-                self.conn_info.get("options")
-            )
-            self.conn_info["options"] = pool_kwargs["options"]
         try:
             self.pool: ConnectionPool = ConnectionPool(
                 conninfo=conn_str[0] if conn_str and conn_str[0] else "",
                 min_size=2,
                 max_size=5,
-                kwargs=pool_kwargs,
+                kwargs=options,
                 open=True,
                 timeout=timeout,
                 configure=self._configure_connection,
@@ -146,25 +130,24 @@ class HarlequinPostgresConnection(HarlequinConnection):
                 self.close()
                 raise
 
-    @staticmethod
-    def _read_only_conn_options(existing: Any = None) -> str:
-        """
-        Adds the read-only setting to any command-line options already present in
-        the conninfo. Postgres uses the last value for a repeated setting, so this
-        overrides a conflicting value passed by the user.
-        """
-        existing_options = str(existing).strip() if existing else ""
-        return f"{existing_options} {READ_ONLY_CONN_OPTION}".strip()
-
     def _configure_connection(self, conn: Connection) -> None:
         """
-        Called by the pool for every connection it creates. Must leave the
-        connection idle (outside of a transaction).
+        Called by the pool for every connection that it creates, so that read-only
+        mode is enforced by every connection, not just the main one. Must leave
+        the connection idle (outside of a transaction).
         """
-        if self.read_only:
-            # belt-and-suspenders: this does not execute any statements; it makes
-            # psycopg add READ ONLY to the transactions that it starts.
-            conn.read_only = True
+        if not self.read_only:
+            return
+        # psycopg's conn.read_only only adds READ ONLY to the transactions that
+        # psycopg itself begins, so it does nothing in an autocommit session,
+        # where psycopg never issues a BEGIN. SET SESSION CHARACTERISTICS sets
+        # default_transaction_read_only for the whole session instead, which the
+        # server enforces in both of our transaction modes.
+        conn.execute("set session characteristics as transaction read only;")
+        conn.commit()
+        # additionally declare the transactions psycopg begins READ ONLY, so
+        # Manual mode is still read-only if the session setting is changed.
+        conn.read_only = True
 
     def _assert_read_only(self) -> None:
         """

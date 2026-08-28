@@ -198,24 +198,12 @@ def test_read_only_is_not_a_conn_info_option() -> None:
     assert "read_only" not in adapter.options
     assert adapter.connection_id == "localhost:5432/postgres"
 
-
-@pytest.mark.parametrize(
-    "existing,expected",
-    [
-        (None, "-c default_transaction_read_only=on"),
-        ("", "-c default_transaction_read_only=on"),
-        (
-            "-c statement_timeout=5000",
-            "-c statement_timeout=5000 -c default_transaction_read_only=on",
-        ),
-        (
-            "-c default_transaction_read_only=off",
-            "-c default_transaction_read_only=off -c default_transaction_read_only=on",
-        ),
-    ],
-)
-def test_read_only_conn_options(existing: str | None, expected: str) -> None:
-    assert HarlequinPostgresConnection._read_only_conn_options(existing) == expected
+    conn = adapter.connect()
+    # the conninfo passed to psycopg is unchanged; read-only is applied to each
+    # connection after it is opened.
+    assert "read_only" not in conn.conn_info
+    assert "options" not in conn.conn_info
+    conn.close()
 
 
 def test_read_only_connection_can_read(
@@ -288,8 +276,21 @@ def test_read_only_refuses_to_connect_if_server_does_not_enforce(
     """
     monkeypatch.setattr(
         HarlequinPostgresConnection,
-        "_read_only_conn_options",
-        staticmethod(lambda existing=None: ""),
+        "_configure_connection",
+        lambda self, conn: None,
     )
     with pytest.raises(HarlequinConnectionError):
         HarlequinPostgresAdapter(conn_str=(TEST_DB_CONN,), read_only=True).connect()
+
+
+def test_read_only_enforced_in_autocommit_session(
+    read_only_connection: HarlequinPostgresConnection,
+) -> None:
+    """
+    psycopg's Connection.read_only does not affect autocommit sessions, since
+    psycopg never issues a BEGIN for them; the session characteristic does.
+    """
+    assert read_only_connection.transaction_mode.label == "Auto"
+    assert read_only_connection._main_conn.autocommit is True
+    with pytest.raises(HarlequinQueryError):
+        read_only_connection.execute("insert into foo values (2)")
