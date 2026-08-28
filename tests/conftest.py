@@ -39,3 +39,19 @@ def connection() -> Generator[HarlequinPostgresConnection, None, None]:
     cur.execute("drop database if exists test;")
     cur.close()
     pgconn.close()
+
+
+@pytest.fixture
+def read_only_connection(
+    connection: HarlequinPostgresConnection,
+) -> Generator[HarlequinPostgresConnection, None, None]:
+    """
+    A read-only connection to the same (read-write provisioned) test database.
+    """
+    connection.execute("create table foo (a int)")
+    connection.execute("insert into foo values (1)")
+    ro_conn = HarlequinPostgresAdapter(
+        conn_str=(f"{TEST_DB_CONN}",), dbname="test", read_only=True
+    ).connect()
+    yield ro_conn
+    ro_conn.close()
