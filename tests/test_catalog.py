@@ -117,6 +117,45 @@ def test_catalog(connection_with_objects: HarlequinPostgresConnection) -> None:
     assert all(isinstance(item, ColumnCatalogItem) for item in foo_mv_cols)
 
 
+def test_catalog_items_carry_type_names(
+    connection_with_objects: HarlequinPostgresConnection,
+) -> None:
+    """Every item the catalog walk builds names its full type, not just a label."""
+    conn = connection_with_objects
+
+    [db_item] = [
+        i
+        for i in conn.get_catalog().items
+        if isinstance(i, DatabaseCatalogItem) and i.label == "test"
+    ]
+    schema_items = db_item.fetch_children()
+    [schema_one_item] = [i for i in schema_items if i.label == "one"]
+    [schema_two_item] = [i for i in schema_items if i.label == "two"]
+    [schema_four_item] = [i for i in schema_items if i.label == "four"]
+
+    [table_item] = [i for i in schema_one_item.fetch_children() if i.label == "foo"]
+    [view_item] = [i for i in schema_two_item.fetch_children() if i.label == "qux"]
+    [matview_item] = [i for i in schema_four_item.fetch_children() if i.label == "foo"]
+
+    assert table_item.type_name == "BASE TABLE"
+    assert view_item.type_name == "VIEW"
+    assert matview_item.type_name == "MATERIALIZED VIEW"
+
+    # a column's type_name is the full type its type_label is shortened from
+    assert [
+        (i.label, i.type_label, i.type_name) for i in table_item.fetch_children()
+    ] == [
+        ("a", "#", "integer"),
+        ("b", "s", "text"),
+    ]
+    assert [
+        (i.label, i.type_label, i.type_name) for i in matview_item.fetch_children()
+    ] == [
+        ("a", "#", "integer"),
+        ("b", "s", "text"),
+    ]
+
+
 @pytest.fixture
 def connection_for_search(
     connection_with_objects: HarlequinPostgresConnection,
@@ -161,8 +200,14 @@ def test_search_catalog_relations(
     # a relation is built by the class fetch_children() would have used for it,
     # so its query name is the one --catalog shows for the same object
     assert table_result.item.query_name == '"one"."foo"'
-    assert table_result.item.type_label == "t"
-    assert matview_result.item.type_label == "mv"
+    assert (table_result.item.type_label, table_result.item.type_name) == (
+        "t",
+        "BASE TABLE",
+    )
+    assert (matview_result.item.type_label, matview_result.item.type_name) == (
+        "mv",
+        "MATERIALIZED VIEW",
+    )
 
 
 def test_search_catalog_relations_finds_views(
@@ -172,7 +217,7 @@ def test_search_catalog_relations_finds_views(
 
     [result] = results
     assert isinstance(result.item, ViewCatalogItem)
-    assert result.item.type_label == "v"
+    assert (result.item.type_label, result.item.type_name) == ("v", "VIEW")
     assert result.parents == ("test", "two")
 
 
@@ -186,7 +231,8 @@ def test_search_catalog_columns(
     assert result.item.label == "customer_id"
     assert result.parents == ("test", "one", "orders")
     assert result.item.query_name == '"customer_id"'
-    assert result.item.type_label == "#"
+    # type_name is the full type the label is shortened from
+    assert (result.item.type_label, result.item.type_name) == ("#", "integer")
 
 
 def test_search_catalog_columns_finds_matview_columns(
@@ -199,7 +245,7 @@ def test_search_catalog_columns_finds_matview_columns(
     [result] = matview_results
     assert isinstance(result.item, ColumnCatalogItem)
     assert result.item.label == "b"
-    assert result.item.type_label == "s"
+    assert (result.item.type_label, result.item.type_name) == ("s", "text")
 
 
 def test_search_catalog_kinds_are_scoped(
@@ -346,3 +392,4 @@ def test_search_catalog_items_match_fetch_children(
         assert searched.query_name == walked.query_name
         assert searched.qualified_identifier == walked.qualified_identifier
         assert searched.type_label == walked.type_label
+        assert searched.type_name == walked.type_name

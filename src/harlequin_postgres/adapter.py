@@ -24,6 +24,7 @@ from psycopg_pool import ConnectionPool
 from textual_fastdatatable.backend import AutoBackendType
 
 from harlequin_postgres.catalog import (
+    MATERIALIZED_VIEW,
     ColumnCatalogItem,
     DatabaseCatalogItem,
     ForeignCatalogItem,
@@ -40,9 +41,6 @@ from harlequin_postgres.loaders import register_inf_loaders
 
 _LIKE_ESCAPE = "\\"
 """What escapes a LIKE metacharacter in a term the caller typed."""
-
-_MATERIALIZED_VIEW = "MATERIALIZED VIEW"
-"""A relation type for matviews, which information_schema.tables does not have."""
 
 
 def _user_schemas(column: str) -> str:
@@ -97,7 +95,7 @@ where
 _SEARCH_MATERIALIZED_VIEWS = f"""
 select
     current_database()::text, m.schemaname::text, m.matviewname::text,
-    '{_MATERIALIZED_VIEW}'::text, null::text, null::text
+    '{MATERIALIZED_VIEW}'::text, null::text, null::text
 from pg_matviews m
 where
     {_user_schemas("m.schemaname")}
@@ -123,7 +121,7 @@ where
 _SEARCH_MATERIALIZED_VIEW_COLUMNS = f"""
 select
     current_database()::text, s.nspname::text, t.relname::text,
-    '{_MATERIALIZED_VIEW}'::text, a.attname::text,
+    '{MATERIALIZED_VIEW}'::text, a.attname::text,
     pg_catalog.format_type(a.atttypid, a.atttypmod)::text
 from pg_attribute a
 join pg_class t on a.attrelid = t.oid
@@ -443,6 +441,7 @@ class HarlequinPostgresConnection(HarlequinConnection):
                         parent=relation_item,
                         label=column,
                         type_label=self._short_column_type(column_type or ""),
+                        type_name=column_type,
                     ),
                     parents=(catalog, schema, relation),
                 )
@@ -455,14 +454,24 @@ class HarlequinPostgresConnection(HarlequinConnection):
     ) -> RelationCatalogItem:
         """A relation of the class `fetch_children()` would have built for it."""
         if relation_type == "VIEW":
-            return ViewCatalogItem.from_parent(parent=parent, label=label)
+            return ViewCatalogItem.from_parent(
+                parent=parent, label=label, type_name=relation_type
+            )
         if relation_type == "LOCAL TEMPORARY":
-            return TempTableCatalogItem.from_parent(parent=parent, label=label)
+            return TempTableCatalogItem.from_parent(
+                parent=parent, label=label, type_name=relation_type
+            )
         if relation_type == "FOREIGN":
-            return ForeignCatalogItem.from_parent(parent=parent, label=label)
-        if relation_type == _MATERIALIZED_VIEW:
-            return MaterializedViewCatalogItem.from_parent(parent=parent, label=label)
-        return TableCatalogItem.from_parent(parent=parent, label=label)
+            return ForeignCatalogItem.from_parent(
+                parent=parent, label=label, type_name=relation_type
+            )
+        if relation_type == MATERIALIZED_VIEW:
+            return MaterializedViewCatalogItem.from_parent(
+                parent=parent, label=label, type_name=relation_type
+            )
+        return TableCatalogItem.from_parent(
+            parent=parent, label=label, type_name=relation_type
+        )
 
     def get_completions(self) -> list[HarlequinCompletion]:
         conn: Connection = self.pool.getconn()
