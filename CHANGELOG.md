@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 - This adapter now supports Harlequin's `--read-only` option and declares `IMPLEMENTS_READ_ONLY`. Read-only connections are enforced by the server, using `set session characteristics as transaction read only` ([#58](https://github.com/tconbeer/harlequin-postgres/issues/58)).
+- This adapter now implements `search_catalog()` and declares `IMPLEMENTS_CATALOG_SEARCH`, so `hsql --catalog-search TERM` finds databases, schemas, relations (including materialized views), and columns in one query, instead of walking the catalog a level at a time ([#59](https://github.com/tconbeer/harlequin-postgres/issues/59)).
+- This adapter now requires `harlequin>=2.11`, the first version with `CatalogSearchResult`.
 
 ## [1.3.1] - 2026-04-19
 

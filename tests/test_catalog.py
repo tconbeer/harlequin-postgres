@@ -1,7 +1,11 @@
 import pytest
-from harlequin.catalog import InteractiveCatalogItem
+from harlequin.catalog import CatalogSearchResult, InteractiveCatalogItem
+from harlequin.exception import HarlequinQueryError
 
-from harlequin_postgres.adapter import HarlequinPostgresConnection
+from harlequin_postgres.adapter import (
+    HarlequinPostgresAdapter,
+    HarlequinPostgresConnection,
+)
 from harlequin_postgres.catalog import (
     ColumnCatalogItem,
     DatabaseCatalogItem,
@@ -111,3 +115,234 @@ def test_catalog(connection_with_objects: HarlequinPostgresConnection) -> None:
     foo_mv_cols = foo_mv_item.fetch_children()
     assert foo_mv_cols
     assert all(isinstance(item, ColumnCatalogItem) for item in foo_mv_cols)
+
+
+@pytest.fixture
+def connection_for_search(
+    connection_with_objects: HarlequinPostgresConnection,
+) -> HarlequinPostgresConnection:
+    conn = connection_with_objects
+    conn.execute("create table one.orders as select 1 as customer_id, 2 as amount")
+    # a schema, a relation, and a column that all match the same term, to check
+    # that a search reports a parent before the items under it
+    conn.execute("create schema five")
+    conn.execute("create table five.five_a as select 1 as five_col")
+    # names holding LIKE metacharacters, which a term must not be able to use
+    conn.execute('create table one."a_b" as select 1 as a')
+    conn.execute('create table one."axb" as select 1 as a')
+    conn.execute('create table one."pct%tbl" as select 1 as a')
+    # the original connection fixture will clean this up.
+    return conn
+
+
+def _labeled(results: list[CatalogSearchResult], label: str) -> CatalogSearchResult:
+    [result] = [r for r in results if r.item.label == label]
+    return result
+
+
+def test_implements_catalog_search() -> None:
+    assert HarlequinPostgresAdapter.IMPLEMENTS_CATALOG_SEARCH is True
+
+
+def test_search_catalog_relations(
+    connection_for_search: HarlequinPostgresConnection,
+) -> None:
+    conn = connection_for_search
+
+    results = conn.search_catalog("foo", kind="relations")
+
+    assert [(r.item.label, r.parents) for r in results] == [
+        ("foo", ("test", "four")),
+        ("foo", ("test", "one")),
+    ]
+    matview_result, table_result = results
+    assert isinstance(matview_result.item, MaterializedViewCatalogItem)
+    assert isinstance(table_result.item, TableCatalogItem)
+    # a relation is built by the class fetch_children() would have used for it,
+    # so its query name is the one --catalog shows for the same object
+    assert table_result.item.query_name == '"one"."foo"'
+    assert table_result.item.type_label == "t"
+    assert matview_result.item.type_label == "mv"
+
+
+def test_search_catalog_relations_finds_views(
+    connection_for_search: HarlequinPostgresConnection,
+) -> None:
+    results = connection_for_search.search_catalog("qux", kind="relations")
+
+    [result] = results
+    assert isinstance(result.item, ViewCatalogItem)
+    assert result.item.type_label == "v"
+    assert result.parents == ("test", "two")
+
+
+def test_search_catalog_columns(
+    connection_for_search: HarlequinPostgresConnection,
+) -> None:
+    results = connection_for_search.search_catalog("customer", kind="columns")
+
+    [result] = results
+    assert isinstance(result.item, ColumnCatalogItem)
+    assert result.item.label == "customer_id"
+    assert result.parents == ("test", "one", "orders")
+    assert result.item.query_name == '"customer_id"'
+    assert result.item.type_label == "#"
+
+
+def test_search_catalog_columns_finds_matview_columns(
+    connection_for_search: HarlequinPostgresConnection,
+) -> None:
+    # four.foo is a materialized view, which information_schema does not have
+    results = connection_for_search.search_catalog("b", kind="columns")
+
+    matview_results = [r for r in results if r.parents == ("test", "four", "foo")]
+    [result] = matview_results
+    assert isinstance(result.item, ColumnCatalogItem)
+    assert result.item.label == "b"
+    assert result.item.type_label == "s"
+
+
+def test_search_catalog_kinds_are_scoped(
+    connection_for_search: HarlequinPostgresConnection,
+) -> None:
+    conn = connection_for_search
+
+    relations = conn.search_catalog("five", kind="relations")
+    assert [r.item.label for r in relations] == ["five_a"]
+
+    columns = conn.search_catalog("five", kind="columns")
+    assert [r.item.label for r in columns] == ["five_col"]
+
+
+def test_search_catalog_all_returns_every_level(
+    connection_for_search: HarlequinPostgresConnection,
+) -> None:
+    results = connection_for_search.search_catalog("five", kind="all")
+
+    # a parent arrives before the items under it
+    assert [(r.item.label, r.parents) for r in results] == [
+        ("five", ("test",)),
+        ("five_a", ("test", "five")),
+        ("five_col", ("test", "five", "five_a")),
+    ]
+    schema_result, relation_result, column_result = results
+    assert isinstance(schema_result.item, SchemaCatalogItem)
+    assert isinstance(relation_result.item, TableCatalogItem)
+    assert isinstance(column_result.item, ColumnCatalogItem)
+
+
+def test_search_catalog_matches_databases_by_name(
+    connection_for_search: HarlequinPostgresConnection,
+) -> None:
+    conn = connection_for_search
+
+    results = conn.search_catalog("postgres", kind="all")
+
+    # the pool is bound to one database, but the others can still be matched
+    # by name, which is all the catalog's top level shows for them
+    result = _labeled(results, "postgres")
+    assert isinstance(result.item, DatabaseCatalogItem)
+    assert result.parents == ()
+    assert result.item.query_name == '"postgres"'
+
+    # a database is not a relation, so the narrower kinds do not report it
+    assert not conn.search_catalog("postgres", kind="relations")
+
+
+def test_search_catalog_is_case_insensitive(
+    connection_for_search: HarlequinPostgresConnection,
+) -> None:
+    conn = connection_for_search
+
+    assert [(r.item.label, r.parents) for r in conn.search_catalog("FOO")] == [
+        (r.item.label, r.parents) for r in conn.search_catalog("foo")
+    ]
+
+
+def test_search_catalog_matches_a_substring(
+    connection_for_search: HarlequinPostgresConnection,
+) -> None:
+    results = connection_for_search.search_catalog("rder", kind="relations")
+
+    assert [r.item.label for r in results] == ["orders"]
+
+
+@pytest.mark.parametrize(
+    "term,expected",
+    [
+        ("a_b", ["a_b"]),
+        ("%tbl", ["pct%tbl"]),
+        ("pct%", ["pct%tbl"]),
+    ],
+)
+def test_search_catalog_escapes_like_metacharacters(
+    connection_for_search: HarlequinPostgresConnection,
+    term: str,
+    expected: list[str],
+) -> None:
+    results = connection_for_search.search_catalog(term, kind="relations")
+
+    assert [r.item.label for r in results] == expected
+
+
+def test_search_catalog_excludes_system_schemas(
+    connection_for_search: HarlequinPostgresConnection,
+) -> None:
+    conn = connection_for_search
+
+    # information_schema.columns and pg_catalog.pg_statistic exist, but the
+    # catalog tree does not show them, so a search must not report them either
+    assert not conn.search_catalog("information_schema", kind="all")
+    assert not conn.search_catalog("pg_statistic", kind="relations")
+
+
+def test_search_catalog_without_a_match_is_empty(
+    connection_for_search: HarlequinPostgresConnection,
+) -> None:
+    assert connection_for_search.search_catalog("no-such-object") == []
+
+
+def test_search_catalog_raises_query_error(
+    connection_for_search: HarlequinPostgresConnection,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from harlequin_postgres import adapter
+
+    monkeypatch.setitem(adapter._SEARCH_SQL, "all", "select not_a_column")
+
+    with pytest.raises(HarlequinQueryError):
+        connection_for_search.search_catalog("foo")
+
+    # the connection went back to the pool, so the next search still works
+    monkeypatch.undo()
+    assert connection_for_search.search_catalog("foo")
+
+
+def test_search_catalog_items_match_fetch_children(
+    connection_for_search: HarlequinPostgresConnection,
+) -> None:
+    conn = connection_for_search
+
+    [db_item] = [
+        i
+        for i in conn.get_catalog().items
+        if isinstance(i, DatabaseCatalogItem) and i.label == "test"
+    ]
+    [schema_item] = [i for i in db_item.fetch_children() if i.label == "one"]
+    [walked_relation] = [i for i in schema_item.fetch_children() if i.label == "orders"]
+    [walked_column] = [
+        i for i in walked_relation.fetch_children() if i.label == "customer_id"
+    ]
+
+    [searched_relation] = conn.search_catalog("orders", kind="relations")
+    [searched_column] = conn.search_catalog("customer_id", kind="columns")
+
+    for walked, searched in (
+        (walked_relation, searched_relation.item),
+        (walked_column, searched_column.item),
+    ):
+        assert type(searched) is type(walked)
+        assert searched.label == walked.label
+        assert searched.query_name == walked.query_name
+        assert searched.qualified_identifier == walked.qualified_identifier
+        assert searched.type_label == walked.type_label

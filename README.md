@@ -60,6 +60,16 @@ harlequin --read-only -a postgres "postgres://my-user:my-pass@localhost:5432/my-
 
 Every connection this adapter opens is configured with `set session characteristics as transaction read only`, so the server rejects any statement that would write, in both Auto and Manual transaction modes. If the server does not report `default_transaction_read_only` as `on` after connecting, Harlequin refuses to start.
 
+## Catalog Search
+
+This adapter implements `search_catalog()`, so you can find an object without walking the catalog a level at a time:
+
+```bash
+hsql -a postgres "postgres://my-user:my-pass@localhost:5432/my-database" --catalog-search orders
+```
+
+A term matches a database, schema, relation, or column whose name contains it, case-insensitively. Relations and columns come from the connected database, since that is the database the catalog shows them for; the other databases on the server are matched by name, which is all the catalog's top level shows for them.
+
 ## Environment Variables
 
 Harlequin's Postgres driver will load connection information from the standard `PG*` environment variables. Any options supplied at the command-line will override environment variables.

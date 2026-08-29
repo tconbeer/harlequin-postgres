@@ -9,7 +9,8 @@ license = "MIT"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "harlequin>=1.25,<3",
+    # 2.11 is the first version with CatalogSearchResult, which search_catalog returns
+    "harlequin>=2.11,<3",
     "psycopg[binary,pool]>=3.2,<4",
     # temp pin to allow prerelease versions
     "duckdb>=1.4.2.dev0; python_version>='3.14'"
@@ -20,7 +21,7 @@ postgres = "harlequin_postgres:HarlequinPostgresAdapter"
 
 [dependency-groups]
 dev = [
-    "harlequin==2.4.0",
+    "harlequin==2.11.0",
     "ruff>=0.5,<1",
     "pytest>=7.4.3,<8",
     "mypy>=1.10.0,<2",
