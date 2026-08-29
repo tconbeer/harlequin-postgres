@@ -10,18 +10,166 @@ from harlequin import (
     HarlequinCursor,
     HarlequinTransactionMode,
 )
-from harlequin.catalog import Catalog, CatalogItem
+from harlequin.catalog import (
+    Catalog,
+    CatalogItem,
+    CatalogSearchKind,
+    CatalogSearchResult,
+)
 from harlequin.exception import HarlequinConnectionError, HarlequinQueryError
 from psycopg import Connection, Cursor, conninfo
-from psycopg.errors import QueryCanceled
+from psycopg.errors import Error, QueryCanceled
 from psycopg.pq import TransactionStatus
 from psycopg_pool import ConnectionPool
 from textual_fastdatatable.backend import AutoBackendType
 
-from harlequin_postgres.catalog import DatabaseCatalogItem
+from harlequin_postgres.catalog import (
+    MATERIALIZED_VIEW,
+    ColumnCatalogItem,
+    DatabaseCatalogItem,
+    ForeignCatalogItem,
+    MaterializedViewCatalogItem,
+    RelationCatalogItem,
+    SchemaCatalogItem,
+    TableCatalogItem,
+    TempTableCatalogItem,
+    ViewCatalogItem,
+)
 from harlequin_postgres.cli_options import POSTGRES_OPTIONS
 from harlequin_postgres.completions import _get_completions
 from harlequin_postgres.loaders import register_inf_loaders
+
+_LIKE_ESCAPE = "\\"
+"""What escapes a LIKE metacharacter in a term the caller typed."""
+
+
+def _user_schemas(column: str) -> str:
+    """The schemas the catalog shows, as a predicate on `column`.
+
+    The same filter `_get_schemas()` applies, so a search only reports paths
+    that `--catalog` also walks. The `%` is doubled because these queries are
+    executed with parameters.
+    """
+    return (
+        f"{column} != 'information_schema' and {column} not like 'pg\\_%%' escape '\\'"
+    )
+
+
+_SEARCH_DATABASES = """
+select d.datname::text, null::text, null::text, null::text, null::text, null::text
+from pg_database d
+where
+    d.datistemplate is false
+    and d.datallowconn is true
+    and d.datname ilike %s escape '\\'
+"""
+"""The databases on the server, which is the catalog's top level.
+
+The pool is bound to one database, so every level below this one is the
+connected database's; the others can still be matched by name, which is all
+`_get_databases()` reads for them.
+"""
+
+_SEARCH_SCHEMAS = f"""
+select
+    s.catalog_name::text, s.schema_name::text,
+    null::text, null::text, null::text, null::text
+from information_schema.schemata s
+where
+    s.catalog_name = current_database()
+    and {_user_schemas("s.schema_name")}
+    and s.schema_name ilike %s escape '\\'
+"""
+
+_SEARCH_RELATIONS = f"""
+select
+    t.table_catalog::text, t.table_schema::text, t.table_name::text,
+    t.table_type::text, null::text, null::text
+from information_schema.tables t
+where
+    t.table_catalog = current_database()
+    and {_user_schemas("t.table_schema")}
+    and t.table_name ilike %s escape '\\'
+"""
+
+_SEARCH_MATERIALIZED_VIEWS = f"""
+select
+    current_database()::text, m.schemaname::text, m.matviewname::text,
+    '{MATERIALIZED_VIEW}'::text, null::text, null::text
+from pg_matviews m
+where
+    {_user_schemas("m.schemaname")}
+    and m.matviewname ilike %s escape '\\'
+"""
+"""Matviews are not in information_schema, the same reason `_get_mvs()` exists."""
+
+_SEARCH_COLUMNS = f"""
+select
+    c.table_catalog::text, c.table_schema::text, c.table_name::text,
+    t.table_type::text, c.column_name::text, c.data_type::text
+from information_schema.columns c
+join information_schema.tables t
+    on t.table_catalog = c.table_catalog
+    and t.table_schema = c.table_schema
+    and t.table_name = c.table_name
+where
+    c.table_catalog = current_database()
+    and {_user_schemas("c.table_schema")}
+    and c.column_name ilike %s escape '\\'
+"""
+
+_SEARCH_MATERIALIZED_VIEW_COLUMNS = f"""
+select
+    current_database()::text, s.nspname::text, t.relname::text,
+    '{MATERIALIZED_VIEW}'::text, a.attname::text,
+    pg_catalog.format_type(a.atttypid, a.atttypmod)::text
+from pg_attribute a
+join pg_class t on a.attrelid = t.oid
+join pg_namespace s on t.relnamespace = s.oid
+where
+    t.relkind = 'm'
+    and a.attnum > 0
+    and not a.attisdropped
+    and {_user_schemas("s.nspname")}
+    and a.attname ilike %s escape '\\'
+"""
+"""The matview equivalent of `_SEARCH_COLUMNS`, shaped like `_get_mv_cols()`."""
+
+_SEARCH_BRANCHES: dict[CatalogSearchKind, tuple[str, ...]] = {
+    "relations": (_SEARCH_RELATIONS, _SEARCH_MATERIALIZED_VIEWS),
+    "columns": (_SEARCH_COLUMNS, _SEARCH_MATERIALIZED_VIEW_COLUMNS),
+    "all": (
+        _SEARCH_DATABASES,
+        _SEARCH_SCHEMAS,
+        _SEARCH_RELATIONS,
+        _SEARCH_MATERIALIZED_VIEWS,
+        _SEARCH_COLUMNS,
+        _SEARCH_MATERIALIZED_VIEW_COLUMNS,
+    ),
+}
+"""Which levels each kind unions, every branch in the same six columns.
+
+A row names one item by filling in the levels above it and leaving the rest
+null, so `all` is every level of the catalog rather than the two at the bottom.
+Each branch binds the pattern exactly once, in this order.
+"""
+
+_SEARCH_SQL = {
+    kind: " union all ".join(branches)
+    # `nulls first` explicitly, because Postgres sorts nulls last ascending:
+    # without it a schema would arrive after the relations under it.
+    + " order by 1, 2 nulls first, 3 nulls first, 5 nulls first"
+    for kind, branches in _SEARCH_BRANCHES.items()
+}
+"""One query per kind, ordered so that an item arrives before its children."""
+
+
+def _contains_pattern(term: str) -> str:
+    """A term as the LIKE pattern that matches any label containing it."""
+    escaped = term
+    for character in (_LIKE_ESCAPE, "%", "_"):
+        escaped = escaped.replace(character, f"{_LIKE_ESCAPE}{character}")
+    return f"%{escaped}%"
 
 
 class HarlequinPostgresCursor(HarlequinCursor):
@@ -229,6 +377,101 @@ class HarlequinPostgresConnection(HarlequinConnection):
             for (db,) in databases
         ]
         return Catalog(items=db_items)
+
+    def search_catalog(
+        self, term: str, kind: CatalogSearchKind = "all"
+    ) -> list[CatalogSearchResult]:
+        pattern = _contains_pattern(term)
+        parameters = [pattern] * len(_SEARCH_BRANCHES[kind])
+        conn: Connection = self.pool.getconn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(_SEARCH_SQL[kind], parameters)
+                found: list[
+                    tuple[
+                        str,
+                        str | None,
+                        str | None,
+                        str | None,
+                        str | None,
+                        str | None,
+                    ]
+                ] = cur.fetchall()
+        except Error as e:
+            raise HarlequinQueryError(
+                msg=str(e), title="Postgres raised an error searching the catalog:"
+            ) from e
+        finally:
+            self.pool.putconn(conn)
+
+        databases: dict[str, DatabaseCatalogItem] = {}
+        schemas: dict[tuple[str, str], SchemaCatalogItem] = {}
+        relations: dict[tuple[str, str, str], RelationCatalogItem] = {}
+        results: list[CatalogSearchResult] = []
+        # a row names the deepest level it fills in, and carries its ancestors
+        # so that each one is built once and the match knows its own path
+        for catalog, schema, relation, relation_type, column, column_type in found:
+            database_item = databases.setdefault(
+                catalog, DatabaseCatalogItem.from_label(label=catalog, connection=self)
+            )
+            if schema is None:
+                results.append(CatalogSearchResult(item=database_item))
+                continue
+            schema_item = schemas.setdefault(
+                (catalog, schema),
+                SchemaCatalogItem.from_parent(parent=database_item, label=schema),
+            )
+            if relation is None:
+                results.append(
+                    CatalogSearchResult(item=schema_item, parents=(catalog,))
+                )
+                continue
+            relation_item = relations.setdefault(
+                (catalog, schema, relation),
+                self._relation_item(schema_item, relation, relation_type),
+            )
+            if column is None:
+                results.append(
+                    CatalogSearchResult(item=relation_item, parents=(catalog, schema))
+                )
+                continue
+            results.append(
+                CatalogSearchResult(
+                    item=ColumnCatalogItem.from_parent(
+                        parent=relation_item,
+                        label=column,
+                        type_label=self._short_column_type(column_type or ""),
+                        type_name=column_type,
+                    ),
+                    parents=(catalog, schema, relation),
+                )
+            )
+        return results
+
+    @staticmethod
+    def _relation_item(
+        parent: SchemaCatalogItem, label: str, relation_type: str | None
+    ) -> RelationCatalogItem:
+        """A relation of the class `fetch_children()` would have built for it."""
+        if relation_type == "VIEW":
+            return ViewCatalogItem.from_parent(
+                parent=parent, label=label, type_name=relation_type
+            )
+        if relation_type == "LOCAL TEMPORARY":
+            return TempTableCatalogItem.from_parent(
+                parent=parent, label=label, type_name=relation_type
+            )
+        if relation_type == "FOREIGN":
+            return ForeignCatalogItem.from_parent(
+                parent=parent, label=label, type_name=relation_type
+            )
+        if relation_type == MATERIALIZED_VIEW:
+            return MaterializedViewCatalogItem.from_parent(
+                parent=parent, label=label, type_name=relation_type
+            )
+        return TableCatalogItem.from_parent(
+            parent=parent, label=label, type_name=relation_type
+        )
 
     def get_completions(self) -> list[HarlequinCompletion]:
         conn: Connection = self.pool.getconn()
@@ -497,6 +740,7 @@ class HarlequinPostgresConnection(HarlequinConnection):
 class HarlequinPostgresAdapter(HarlequinAdapter):
     ADAPTER_OPTIONS = POSTGRES_OPTIONS
     IMPLEMENTS_CANCEL = True
+    IMPLEMENTS_CATALOG_SEARCH = True
     IMPLEMENTS_READ_ONLY = True
 
     def __init__(

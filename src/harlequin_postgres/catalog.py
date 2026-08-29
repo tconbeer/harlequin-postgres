@@ -25,6 +25,13 @@ from harlequin_postgres.interactions import (
 if TYPE_CHECKING:
     from harlequin_postgres.adapter import HarlequinPostgresConnection
 
+MATERIALIZED_VIEW = "MATERIALIZED VIEW"
+"""What Postgres calls a matview, which information_schema.tables does not have.
+
+`table_type` names every other kind of relation, so this stands in for it as a
+matview's `type_name`.
+"""
+
 
 @dataclass
 class ColumnCatalogItem(InteractiveCatalogItem["HarlequinPostgresConnection"]):
@@ -36,6 +43,7 @@ class ColumnCatalogItem(InteractiveCatalogItem["HarlequinPostgresConnection"]):
         parent: "RelationCatalogItem",
         label: str,
         type_label: str,
+        type_name: str | None = None,
     ) -> "ColumnCatalogItem":
         column_qualified_identifier = f'{parent.qualified_identifier}."{label}"'
         column_query_name = f'"{label}"'
@@ -44,6 +52,7 @@ class ColumnCatalogItem(InteractiveCatalogItem["HarlequinPostgresConnection"]):
             query_name=column_query_name,
             label=label,
             type_label=type_label,
+            type_name=type_name,
             connection=parent.connection,
             parent=parent,
             loaded=True,
@@ -70,6 +79,7 @@ class RelationCatalogItem(InteractiveCatalogItem["HarlequinPostgresConnection"])
                 parent=self,
                 label=column_name,
                 type_label=self.connection._short_column_type(column_type),
+                type_name=column_type,
             )
             for column_name, column_type in result
         ]
@@ -86,6 +96,7 @@ class ViewCatalogItem(RelationCatalogItem):
         cls,
         parent: "SchemaCatalogItem",
         label: str,
+        type_name: str | None = "VIEW",
     ) -> "ViewCatalogItem":
         relation_query_name = f'"{parent.label}"."{label}"'
         relation_qualified_identifier = f'{parent.qualified_identifier}."{label}"'
@@ -94,6 +105,7 @@ class ViewCatalogItem(RelationCatalogItem):
             query_name=relation_query_name,
             label=label,
             type_label="v",
+            type_name=type_name,
             connection=parent.connection,
             parent=parent,
         )
@@ -111,6 +123,7 @@ class TableCatalogItem(RelationCatalogItem):
         cls,
         parent: "SchemaCatalogItem",
         label: str,
+        type_name: str | None = "BASE TABLE",
     ) -> "TableCatalogItem":
         relation_query_name = f'"{parent.label}"."{label}"'
         relation_qualified_identifier = f'{parent.qualified_identifier}."{label}"'
@@ -119,6 +132,7 @@ class TableCatalogItem(RelationCatalogItem):
             query_name=relation_query_name,
             label=label,
             type_label="t",
+            type_name=type_name,
             connection=parent.connection,
             parent=parent,
         )
@@ -130,6 +144,7 @@ class TempTableCatalogItem(TableCatalogItem):
         cls,
         parent: "SchemaCatalogItem",
         label: str,
+        type_name: str | None = "LOCAL TEMPORARY",
     ) -> "TempTableCatalogItem":
         relation_query_name = f'"{parent.label}"."{label}"'
         relation_qualified_identifier = f'{parent.qualified_identifier}."{label}"'
@@ -138,6 +153,7 @@ class TempTableCatalogItem(TableCatalogItem):
             query_name=relation_query_name,
             label=label,
             type_label="tmp",
+            type_name=type_name,
             connection=parent.connection,
             parent=parent,
         )
@@ -153,6 +169,7 @@ class ForeignCatalogItem(TableCatalogItem):
         cls,
         parent: "SchemaCatalogItem",
         label: str,
+        type_name: str | None = "FOREIGN",
     ) -> "ForeignCatalogItem":
         relation_query_name = f'"{parent.label}"."{label}"'
         relation_qualified_identifier = f'{parent.qualified_identifier}."{label}"'
@@ -161,6 +178,7 @@ class ForeignCatalogItem(TableCatalogItem):
             query_name=relation_query_name,
             label=label,
             type_label="f",
+            type_name=type_name,
             connection=parent.connection,
             parent=parent,
         )
@@ -172,6 +190,7 @@ class MaterializedViewCatalogItem(RelationCatalogItem):
         cls,
         parent: "SchemaCatalogItem",
         label: str,
+        type_name: str | None = MATERIALIZED_VIEW,
     ) -> "MaterializedViewCatalogItem":
         relation_query_name = f'"{parent.label}"."{label}"'
         relation_qualified_identifier = f'{parent.qualified_identifier}."{label}"'
@@ -180,6 +199,7 @@ class MaterializedViewCatalogItem(RelationCatalogItem):
             query_name=relation_query_name,
             label=label,
             type_label="mv",
+            type_name=type_name,
             connection=parent.connection,
             parent=parent,
         )
@@ -193,6 +213,7 @@ class MaterializedViewCatalogItem(RelationCatalogItem):
                 parent=self,
                 label=column_name,
                 type_label=self.connection._short_column_type(column_type),
+                type_name=column_type,
             )
             for column_name, column_type in result
         ]
@@ -230,11 +251,14 @@ class SchemaCatalogItem(InteractiveCatalogItem["HarlequinPostgresConnection"]):
         children: list[RelationCatalogItem] = []
         result = self.connection._get_relations(self.parent.label, self.label)
         for table_label, table_type in result:
+            # the relation's own class carries its type_label; table_type is how
+            # this database spells the same thing, so it is passed through
             if table_type == "VIEW":
                 children.append(
                     ViewCatalogItem.from_parent(
                         parent=self,
                         label=table_label,
+                        type_name=table_type,
                     )
                 )
             elif table_type == "LOCAL TEMPORARY":
@@ -242,6 +266,7 @@ class SchemaCatalogItem(InteractiveCatalogItem["HarlequinPostgresConnection"]):
                     TempTableCatalogItem.from_parent(
                         parent=self,
                         label=table_label,
+                        type_name=table_type,
                     )
                 )
             elif table_type == "FOREIGN":
@@ -249,6 +274,7 @@ class SchemaCatalogItem(InteractiveCatalogItem["HarlequinPostgresConnection"]):
                     ForeignCatalogItem.from_parent(
                         parent=self,
                         label=table_label,
+                        type_name=table_type,
                     )
                 )
             else:
@@ -256,6 +282,7 @@ class SchemaCatalogItem(InteractiveCatalogItem["HarlequinPostgresConnection"]):
                     TableCatalogItem.from_parent(
                         parent=self,
                         label=table_label,
+                        type_name=table_type,
                     )
                 )
 
