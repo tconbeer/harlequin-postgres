@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-08-29
+
 - This adapter now supports Harlequin's `--read-only` option and declares `IMPLEMENTS_READ_ONLY`. Read-only connections are enforced by the server, using `set session characteristics as transaction read only` ([#58](https://github.com/tconbeer/harlequin-postgres/issues/58)).
 - This adapter now implements `search_catalog()` and declares `IMPLEMENTS_CATALOG_SEARCH`, so `hsql --catalog-search TERM` finds databases, schemas, relations (including materialized views), and columns in one query, instead of walking the catalog a level at a time ([#59](https://github.com/tconbeer/harlequin-postgres/issues/59)).
 - Catalog items now set `type_name`, the full type that their short `type_label` is shortened from: `BASE TABLE`, `VIEW`, `MATERIALIZED VIEW`, etc. for relations, and the column's type, as Postgres spells it, for columns.
@@ -94,7 +96,8 @@ All notable changes to this project will be documented in this file.
 
 - Adds a basic Postgres adapter with most common connection options.
 
-[unreleased]: https://github.com/tconbeer/harlequin-postgres/compare/1.3.1...HEAD
+[unreleased]: https://github.com/tconbeer/harlequin-postgres/compare/1.4.0...HEAD
+[1.4.0]: https://github.com/tconbeer/harlequin-postgres/compare/1.3.1...1.4.0
 [1.3.1]: https://github.com/tconbeer/harlequin-postgres/compare/1.3.0...1.3.1
 [1.3.0]: https://github.com/tconbeer/harlequin-postgres/compare/1.2.2...1.3.0
 [1.2.2]: https://github.com/tconbeer/harlequin-postgres/compare/1.2.1...1.2.2
