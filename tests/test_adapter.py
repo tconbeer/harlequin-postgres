@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 from datetime import date, datetime
 
+import psycopg
 import pytest
 from harlequin.adapter import HarlequinAdapter, HarlequinConnection, HarlequinCursor
 from harlequin.catalog import Catalog, CatalogItem
@@ -174,3 +175,122 @@ def test_closed_conn_raises_right_error(
 
     with pytest.raises(HarlequinQueryError):
         connection.execute("select 1")
+
+
+def test_implements_read_only() -> None:
+    assert HarlequinPostgresAdapter.IMPLEMENTS_READ_ONLY is True
+
+
+def test_read_only_defaults_to_false() -> None:
+    adapter = HarlequinPostgresAdapter(conn_str=(TEST_DB_CONN,))
+    assert adapter.read_only is False
+    conn = adapter.connect()
+    assert conn.read_only is False
+    conn.close()
+
+
+def test_read_only_is_not_a_conn_info_option() -> None:
+    """
+    read_only is not a libpq conninfo key, so it must never be passed to psycopg.
+    """
+    adapter = HarlequinPostgresAdapter(conn_str=(TEST_DB_CONN,), read_only=True)
+    assert adapter.read_only is True
+    assert "read_only" not in adapter.options
+    assert adapter.connection_id == "localhost:5432/postgres"
+
+    conn = adapter.connect()
+    # the conninfo passed to psycopg is unchanged; read-only is applied to each
+    # connection after it is opened.
+    assert "read_only" not in conn.conn_info
+    assert "options" not in conn.conn_info
+    conn.close()
+
+
+def test_read_only_connection_can_read(
+    read_only_connection: HarlequinPostgresConnection,
+) -> None:
+    assert read_only_connection.read_only is True
+    cur = read_only_connection.execute("select * from foo")
+    assert isinstance(cur, HarlequinCursor)
+    assert cur.fetchall() == [(1,)]
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "insert into foo values (2)",
+        "update foo set a = 2",
+        "delete from foo",
+        "create table bar (a int)",
+        "drop table foo",
+    ],
+)
+def test_read_only_connection_rejects_writes(
+    read_only_connection: HarlequinPostgresConnection, query: str
+) -> None:
+    with pytest.raises(HarlequinQueryError):
+        read_only_connection.execute(query)
+
+
+def test_read_only_survives_transaction_mode_toggle(
+    read_only_connection: HarlequinPostgresConnection,
+) -> None:
+    assert read_only_connection.transaction_mode.label == "Auto"
+    for _ in range(4):
+        with pytest.raises(HarlequinQueryError):
+            read_only_connection.execute("insert into foo values (2)")
+        read_only_connection.toggle_transaction_mode()
+
+
+def test_read_only_applies_to_pooled_connections(
+    read_only_connection: HarlequinPostgresConnection,
+) -> None:
+    # the catalog and completions run on connections from the pool, not on the
+    # main connection.
+    conn = read_only_connection.pool.getconn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("select current_setting('default_transaction_read_only')")
+            assert cur.fetchone() == ("on",)
+            with pytest.raises(psycopg.errors.ReadOnlySqlTransaction):
+                cur.execute("create table baz (a int)")
+        conn.rollback()
+    finally:
+        read_only_connection.pool.putconn(conn)
+
+
+def test_read_only_connection_get_catalog(
+    read_only_connection: HarlequinPostgresConnection,
+) -> None:
+    catalog = read_only_connection.get_catalog()
+    assert isinstance(catalog, Catalog)
+    assert catalog.items
+
+
+def test_read_only_refuses_to_connect_if_server_does_not_enforce(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    If the read-only setting does not make it to the server, connecting must fail
+    loudly, rather than hand back a connection that would happily write.
+    """
+    monkeypatch.setattr(
+        HarlequinPostgresConnection,
+        "_configure_connection",
+        lambda self, conn: None,
+    )
+    with pytest.raises(HarlequinConnectionError):
+        HarlequinPostgresAdapter(conn_str=(TEST_DB_CONN,), read_only=True).connect()
+
+
+def test_read_only_enforced_in_autocommit_session(
+    read_only_connection: HarlequinPostgresConnection,
+) -> None:
+    """
+    psycopg's Connection.read_only does not affect autocommit sessions, since
+    psycopg never issues a BEGIN for them; the session characteristic does.
+    """
+    assert read_only_connection.transaction_mode.label == "Auto"
+    assert read_only_connection._main_conn.autocommit is True
+    with pytest.raises(HarlequinQueryError):
+        read_only_connection.execute("insert into foo values (2)")

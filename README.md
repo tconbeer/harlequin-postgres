@@ -50,6 +50,16 @@ For descriptions of each option, run:
 harlequin --help
 ```
 
+## Read-Only Mode
+
+This adapter supports Harlequin's `--read-only` option:
+
+```bash
+harlequin --read-only -a postgres "postgres://my-user:my-pass@localhost:5432/my-database"
+```
+
+Every connection this adapter opens is configured with `set session characteristics as transaction read only`, so the server rejects any statement that would write, in both Auto and Manual transaction modes. If the server does not report `default_transaction_read_only` as `on` after connecting, Harlequin refuses to start.
+
 ## Environment Variables
 
 Harlequin's Postgres driver will load connection information from the standard `PG*` environment variables. Any options supplied at the command-line will override environment variables.

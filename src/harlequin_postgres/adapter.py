@@ -68,8 +68,10 @@ class HarlequinPostgresConnection(HarlequinConnection):
         *_: Any,
         init_message: str = "",
         options: dict[str, Any],
+        read_only: bool = False,
     ) -> None:
         self.init_message = init_message
+        self.read_only = bool(read_only)
         try:
             self.conn_info = conninfo.conninfo_to_dict(
                 conninfo=conn_str[0] if conn_str else "", **options
@@ -101,6 +103,7 @@ class HarlequinPostgresConnection(HarlequinConnection):
                 kwargs=options,
                 open=True,
                 timeout=timeout,
+                configure=self._configure_connection,
             )
             self._main_conn: Connection = self.pool.getconn()
         except Exception as e:
@@ -119,6 +122,58 @@ class HarlequinPostgresConnection(HarlequinConnection):
             ]
         )
         self.toggle_transaction_mode()
+
+        if self.read_only:
+            try:
+                self._assert_read_only()
+            except HarlequinConnectionError:
+                self.close()
+                raise
+
+    def _configure_connection(self, conn: Connection) -> None:
+        """
+        Called by the pool for every connection that it creates, so that read-only
+        mode is enforced by every connection, not just the main one. Must leave
+        the connection idle (outside of a transaction).
+        """
+        if not self.read_only:
+            return
+        # psycopg's conn.read_only only adds READ ONLY to the transactions that
+        # psycopg itself begins, so it does nothing in an autocommit session,
+        # where psycopg never issues a BEGIN. SET SESSION CHARACTERISTICS sets
+        # default_transaction_read_only for the whole session instead, which the
+        # server enforces in both of our transaction modes.
+        conn.execute("set session characteristics as transaction read only;")
+        conn.commit()
+        # additionally declare the transactions psycopg begins READ ONLY, so
+        # Manual mode is still read-only if the session setting is changed.
+        conn.read_only = True
+
+    def _assert_read_only(self) -> None:
+        """
+        Confirms the server is actually enforcing read-only transactions, so this
+        adapter never claims to implement a guarantee that it did not deliver.
+        """
+        try:
+            with self._main_conn.cursor() as cur:
+                cur.execute("select current_setting('default_transaction_read_only');")
+                result = cur.fetchone()
+            setting = result[0] if result else None
+        except Exception as e:
+            raise HarlequinConnectionError(
+                msg=str(e),
+                title="Harlequin could not open a read-only connection to Postgres.",
+            ) from e
+        if setting != "on":
+            raise HarlequinConnectionError(
+                msg=(
+                    "Harlequin requested a read-only connection, but this server "
+                    "reports default_transaction_read_only is "
+                    f"{setting!r}. Refusing to connect, since writes would not "
+                    "be prevented."
+                ),
+                title="Harlequin could not open a read-only connection to Postgres.",
+            )
 
     def execute(self, query: str) -> HarlequinCursor | None:
         if (
@@ -442,10 +497,12 @@ class HarlequinPostgresConnection(HarlequinConnection):
 class HarlequinPostgresAdapter(HarlequinAdapter):
     ADAPTER_OPTIONS = POSTGRES_OPTIONS
     IMPLEMENTS_CANCEL = True
+    IMPLEMENTS_READ_ONLY = True
 
     def __init__(
         self,
         conn_str: Sequence[str],
+        read_only: bool = False,
         host: str | None = None,
         port: str | None = None,
         dbname: str | None = None,
@@ -461,6 +518,7 @@ class HarlequinPostgresAdapter(HarlequinAdapter):
         **_: Any,
     ) -> None:
         self.conn_str = conn_str
+        self.read_only = bool(read_only)
         self.options: dict[str, str | int | None] = {
             "host": host,
             "port": port,
@@ -503,5 +561,7 @@ class HarlequinPostgresAdapter(HarlequinAdapter):
         # before creating the connection, register updated type adapters, so
         # all subsequent connections will use those adapters
         register_inf_loaders()
-        conn = HarlequinPostgresConnection(self.conn_str, options=self.options)
+        conn = HarlequinPostgresConnection(
+            self.conn_str, options=self.options, read_only=self.read_only
+        )
         return conn
