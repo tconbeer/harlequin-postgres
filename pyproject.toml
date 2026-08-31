@@ -1,6 +1,6 @@
 [project]
 name = "harlequin-postgres"
-version = "1.4.0"
+version = "1.4.1"
 description = "A Harlequin adapter for Postgres."
 authors = [
     { name = "Ted Conbeer", email = "tconbeer@users.noreply.github.com" },

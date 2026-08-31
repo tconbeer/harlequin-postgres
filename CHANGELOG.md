@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-08-31
+
 - Fixes noisy `rolling back returned connection:` warnings from `psycopg_pool`, one per catalog query, by returning pooled connections outside of a transaction. Catalog and completion queries now borrow their connection with `pool.connection()`, which also returns the connection to the pool if the query raises ([#61](https://github.com/tconbeer/harlequin-postgres/issues/61)).
 
 ## [1.4.0] - 2026-08-29
@@ -98,7 +100,8 @@ All notable changes to this project will be documented in this file.
 
 - Adds a basic Postgres adapter with most common connection options.
 
-[unreleased]: https://github.com/tconbeer/harlequin-postgres/compare/1.4.0...HEAD
+[unreleased]: https://github.com/tconbeer/harlequin-postgres/compare/1.4.1...HEAD
+[1.4.1]: https://github.com/tconbeer/harlequin-postgres/compare/1.4.0...1.4.1
 [1.4.0]: https://github.com/tconbeer/harlequin-postgres/compare/1.3.1...1.4.0
 [1.3.1]: https://github.com/tconbeer/harlequin-postgres/compare/1.3.0...1.3.1
 [1.3.0]: https://github.com/tconbeer/harlequin-postgres/compare/1.2.2...1.3.0
