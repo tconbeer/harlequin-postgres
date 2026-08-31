@@ -1,15 +1,18 @@
 from __future__ import annotations
 
+import logging
 import sys
 from datetime import date, datetime
 
 import psycopg
 import pytest
 from harlequin.adapter import HarlequinAdapter, HarlequinConnection, HarlequinCursor
-from harlequin.catalog import Catalog, CatalogItem
+from harlequin.catalog import Catalog, CatalogItem, InteractiveCatalogItem
 from harlequin.exception import HarlequinConnectionError, HarlequinQueryError
+from psycopg.pq import TransactionStatus
 from textual_fastdatatable.backend import create_backend
 
+from harlequin_postgres import adapter as adapter_module
 from harlequin_postgres.adapter import (
     HarlequinPostgresAdapter,
     HarlequinPostgresConnection,
@@ -166,6 +169,67 @@ def test_inf_timestamps(connection: HarlequinPostgresConnection) -> None:
             datetime.min,
         )
     ]
+
+
+def test_pooled_queries_return_idle_connections(
+    connection: HarlequinPostgresConnection,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """
+    Pooled connections are not autocommit, so a bare select leaves them INTRANS.
+    psycopg_pool logs a warning and rolls back for every connection returned that
+    way, so every helper that borrows one has to end its transaction first.
+    """
+    connection.execute("create schema one")
+    connection.execute("create table one.foo as select 1 as a")
+
+    with caplog.at_level(logging.WARNING, logger="psycopg.pool"):
+        catalog = connection.get_catalog()
+        [db_item] = [item for item in catalog.items if item.label == "test"]
+        assert isinstance(db_item, InteractiveCatalogItem)
+        [schema_item] = [
+            item for item in db_item.fetch_children() if item.label == "one"
+        ]
+        assert isinstance(schema_item, InteractiveCatalogItem)
+        [relation_item] = [
+            item for item in schema_item.fetch_children() if item.label == "foo"
+        ]
+        assert isinstance(relation_item, InteractiveCatalogItem)
+        relation_item.fetch_children()
+        connection.search_catalog("foo")
+        connection.get_completions()
+
+    assert [
+        record.getMessage()
+        for record in caplog.records
+        if record.name.startswith("psycopg")
+    ] == []
+
+    with connection.pool.connection() as conn:
+        assert conn.info.transaction_status == TransactionStatus.IDLE
+
+
+def test_failed_pooled_query_does_not_leak_connections(
+    connection: HarlequinPostgresConnection,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    A borrowed connection has to go back to the pool when the query raises, too;
+    otherwise a handful of failures would exhaust the pool.
+    """
+
+    def raise_error(conn: psycopg.Connection) -> None:
+        raise ValueError("boom")
+
+    monkeypatch.setattr(adapter_module, "_get_completions", raise_error)
+
+    for _ in range(connection.pool.max_size + 5):
+        with pytest.raises(ValueError):
+            connection.get_completions()
+
+    monkeypatch.undo()
+    # the pool still has connections to give out
+    assert connection.get_completions()
 
 
 def test_closed_conn_raises_right_error(

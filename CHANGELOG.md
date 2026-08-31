@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- Fixes noisy `rolling back returned connection:` warnings from `psycopg_pool`, one per catalog query, by returning pooled connections outside of a transaction. Catalog and completion queries now borrow their connection with `pool.connection()`, which also returns the connection to the pool if the query raises ([#61](https://github.com/tconbeer/harlequin-postgres/issues/61)).
+
 ## [1.4.0] - 2026-08-29
 
 - This adapter now supports Harlequin's `--read-only` option and declares `IMPLEMENTS_READ_ONLY`. Read-only connections are enforced by the server, using `set session characteristics as transaction read only` ([#58](https://github.com/tconbeer/harlequin-postgres/issues/58)).
