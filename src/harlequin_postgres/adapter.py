@@ -383,9 +383,8 @@ class HarlequinPostgresConnection(HarlequinConnection):
     ) -> list[CatalogSearchResult]:
         pattern = _contains_pattern(term)
         parameters = [pattern] * len(_SEARCH_BRANCHES[kind])
-        conn: Connection = self.pool.getconn()
         try:
-            with conn.cursor() as cur:
+            with self.pool.connection() as conn, conn.cursor() as cur:
                 cur.execute(_SEARCH_SQL[kind], parameters)
                 found: list[
                     tuple[
@@ -401,8 +400,6 @@ class HarlequinPostgresConnection(HarlequinConnection):
             raise HarlequinQueryError(
                 msg=str(e), title="Postgres raised an error searching the catalog:"
             ) from e
-        finally:
-            self.pool.putconn(conn)
 
         databases: dict[str, DatabaseCatalogItem] = {}
         schemas: dict[tuple[str, str], SchemaCatalogItem] = {}
@@ -474,10 +471,8 @@ class HarlequinPostgresConnection(HarlequinConnection):
         )
 
     def get_completions(self) -> list[HarlequinCompletion]:
-        conn: Connection = self.pool.getconn()
-        completions = _get_completions(conn)
-        self.pool.putconn(conn)
-        return completions
+        with self.pool.connection() as conn:
+            return _get_completions(conn)
 
     def close(self) -> None:
         self.pool.putconn(self._main_conn)
@@ -504,8 +499,7 @@ class HarlequinPostgresConnection(HarlequinConnection):
             conn.autocommit = False
 
     def _get_databases(self) -> list[tuple[str]]:
-        conn: Connection = self.pool.getconn()
-        with conn.cursor() as cur:
+        with self.pool.connection() as conn, conn.cursor() as cur:
             cur.execute(
                 """
                 select datname
@@ -517,12 +511,10 @@ class HarlequinPostgresConnection(HarlequinConnection):
                 ;"""
             )
             results: list[tuple[str]] = cur.fetchall()
-        self.pool.putconn(conn)
         return results
 
     def _get_schemas(self, dbname: str) -> list[tuple[str]]:
-        conn: Connection = self.pool.getconn()
-        with conn.cursor() as cur:
+        with self.pool.connection() as conn, conn.cursor() as cur:
             cur.execute(
                 """
                 select schema_name
@@ -536,12 +528,10 @@ class HarlequinPostgresConnection(HarlequinConnection):
                 (dbname,),
             )
             results: list[tuple[str]] = cur.fetchall()
-        self.pool.putconn(conn)
         return results
 
     def _get_relations(self, dbname: str, schema: str) -> list[tuple[str, str]]:
-        conn: Connection = self.pool.getconn()
-        with conn.cursor() as cur:
+        with self.pool.connection() as conn, conn.cursor() as cur:
             cur.execute(
                 """
                 select table_name, table_type
@@ -554,13 +544,11 @@ class HarlequinPostgresConnection(HarlequinConnection):
                 (dbname, schema),
             )
             results: list[tuple[str, str]] = cur.fetchall()
-        self.pool.putconn(conn)
         return results
 
     # only works for the currently-connected db
     def _get_mvs(self, schema: str) -> list[tuple[str]]:
-        conn: Connection = self.pool.getconn()
-        with conn.cursor() as cur:
+        with self.pool.connection() as conn, conn.cursor() as cur:
             cur.execute(
                 """
                 select matviewname
@@ -572,14 +560,12 @@ class HarlequinPostgresConnection(HarlequinConnection):
                 (schema,),
             )
             results: list[tuple[str]] = cur.fetchall()
-        self.pool.putconn(conn)
         return results
 
     def _get_columns(
         self, dbname: str, schema: str, relation: str
     ) -> list[tuple[str, str]]:
-        conn: Connection = self.pool.getconn()
-        with conn.cursor() as cur:
+        with self.pool.connection() as conn, conn.cursor() as cur:
             cur.execute(
                 """
                 select column_name, data_type
@@ -593,12 +579,10 @@ class HarlequinPostgresConnection(HarlequinConnection):
                 (dbname, schema, relation),
             )
             results: list[tuple[str, str]] = cur.fetchall()
-        self.pool.putconn(conn)
         return results
 
     def _get_mv_cols(self, schema: str, mv: str) -> list[tuple[str, str]]:
-        conn: Connection = self.pool.getconn()
-        with conn.cursor() as cur:
+        with self.pool.connection() as conn, conn.cursor() as cur:
             cur.execute(
                 """
                 select 
@@ -617,7 +601,6 @@ class HarlequinPostgresConnection(HarlequinConnection):
                 (schema, mv),
             )
             results: list[tuple[str, str]] = cur.fetchall()
-        self.pool.putconn(conn)
         return results
 
     @staticmethod
