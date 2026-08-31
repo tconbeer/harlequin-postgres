@@ -13,6 +13,7 @@ from textual_fastdatatable.backend import create_backend
 from harlequin_postgres.adapter import (
     HarlequinPostgresAdapter,
     HarlequinPostgresConnection,
+    HarlequinPostgresCursor,
 )
 
 if sys.version_info < (3, 10):
@@ -294,3 +295,42 @@ def test_read_only_enforced_in_autocommit_session(
     assert read_only_connection._main_conn.autocommit is True
     with pytest.raises(HarlequinQueryError):
         read_only_connection.execute("insert into foo values (2)")
+
+
+def test_editable_columns_marks_table_columns_and_pk(
+    connection: HarlequinPostgresConnection,
+) -> None:
+    connection.execute("create table ed (id int primary key, name text)")
+    cur = connection.execute("select id, name from ed")
+    assert isinstance(cur, HarlequinPostgresCursor)
+    editable = cur.editable_columns()
+
+    # both columns come from a plain table, so both are editable
+    assert set(editable) == {0, 1}
+    id_table, id_col, id_is_pk = editable[0]
+    name_table, name_col, name_is_pk = editable[1]
+    assert "ed" in id_table and "id" in id_col
+    assert id_is_pk is True  # id is the primary key
+    assert name_is_pk is False  # name is not
+    assert "name" in name_col
+
+
+def test_editable_columns_excludes_computed_columns(
+    connection: HarlequinPostgresConnection,
+) -> None:
+    connection.execute("create table ed2 (id int primary key, qty int)")
+    # qty * 2 is derived, so it has no source table and is not editable;
+    # id still maps back to the base table.
+    cur = connection.execute("select id, qty * 2 as double_qty from ed2")
+    assert isinstance(cur, HarlequinPostgresCursor)
+    editable = cur.editable_columns()
+    assert 0 in editable
+    assert 1 not in editable
+
+
+def test_editable_columns_empty_without_source_table(
+    connection: HarlequinPostgresConnection,
+) -> None:
+    cur = connection.execute("select 1 as a, 'x' as b")
+    assert isinstance(cur, HarlequinPostgresCursor)
+    assert cur.editable_columns() == {}

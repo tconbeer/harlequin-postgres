@@ -181,6 +181,57 @@ class HarlequinPostgresCursor(HarlequinCursor):
         assert cur.description is not None
         self.description = cur.description.copy()
         self._limit: int | None = None
+        # each result column's source table OID and column number, read from the
+        # libpq result while the cursor is open; an OID of 0 marks a computed column
+        self._column_sources: list[tuple[int, int]] = []
+        try:
+            pgresult = cur.pgresult
+            if pgresult is not None:
+                self._column_sources = [
+                    (pgresult.ftable(i), pgresult.ftablecol(i))
+                    for i in range(pgresult.nfields)
+                ]
+        except Exception:
+            self._column_sources = []
+
+    def editable_columns(self) -> dict[int, tuple[str, str, bool]]:
+        """Map result-column index -> (qualified_table, quoted_column, is_primary_key)
+        for result columns that come from a plain table (relkind 'r'/'p'), so they
+        can be edited in place. is_primary_key marks columns usable to identify the
+        row in an UPDATE's WHERE clause. Works across joins; returns {} if none."""
+        source_oids = sorted({oid for oid, _ in self._column_sources if oid})
+        if not source_oids:
+            return {}
+        query = """
+            select a.attrelid as toid, a.attnum as attnum,
+                   n.nspname as schema, c.relname as tbl, a.attname as col,
+                   coalesce(bool_or(pk.is_pk), false) as is_pk
+            from pg_attribute a
+            join pg_class c on a.attrelid = c.oid and c.relkind in ('r', 'p')
+            join pg_namespace n on c.relnamespace = n.oid
+            left join (
+                select con.conrelid as toid, unnest(con.conkey) as attnum,
+                       true as is_pk
+                from pg_constraint con
+                where con.contype = 'p'
+            ) pk on pk.toid = a.attrelid and pk.attnum = a.attnum
+            where a.attrelid = any(%s) and a.attnum > 0 and not a.attisdropped
+            group by a.attrelid, a.attnum, n.nspname, c.relname, a.attname
+        """
+        try:
+            with self.conn.pool.connection() as c:
+                rows = c.execute(query, (source_oids,)).fetchall()
+        except Exception:
+            return {}
+        info_by_source = {
+            (toid, attnum): (f'"{schema}"."{tbl}"', f'"{col}"', is_pk)
+            for (toid, attnum, schema, tbl, col, is_pk) in rows
+        }
+        return {
+            idx: info_by_source[(oid, attnum)]
+            for idx, (oid, attnum) in enumerate(self._column_sources)
+            if (oid, attnum) in info_by_source
+        }
 
     def columns(self) -> list[tuple[str, str]]:
         return [
