@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- Fetches all of a schema's columns in a single query when the schema's children are loaded, instead of one query per table/view. This makes browsing the Data Catalog much faster over high-latency connections. Materialized views keep their per-item lazy load.
+
 ## [1.4.0] - 2026-08-29
 
 - This adapter now supports Harlequin's `--read-only` option and declares `IMPLEMENTS_READ_ONLY`. Read-only connections are enforced by the server, using `set session characteristics as transaction read only` ([#58](https://github.com/tconbeer/harlequin-postgres/issues/58)).
