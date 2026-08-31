@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- Adds `HarlequinPostgresCursor.editable_columns()`, which reports the source table, source column, and primary-key flag for result columns that come from a plain table (used by Harlequin's in-place cell editing, tconbeer/harlequin#987, to build a safe `update`). Works across joins.
+
 ## [1.4.0] - 2026-08-29
 
 - This adapter now supports Harlequin's `--read-only` option and declares `IMPLEMENTS_READ_ONLY`. Read-only connections are enforced by the server, using `set session characteristics as transaction read only` ([#58](https://github.com/tconbeer/harlequin-postgres/issues/58)).
