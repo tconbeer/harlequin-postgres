@@ -13,6 +13,7 @@ from textual_fastdatatable.backend import create_backend
 from harlequin_postgres.adapter import (
     HarlequinPostgresAdapter,
     HarlequinPostgresConnection,
+    HarlequinPostgresCursor,
 )
 
 if sys.version_info < (3, 10):
@@ -294,3 +295,55 @@ def test_read_only_enforced_in_autocommit_session(
     assert read_only_connection._main_conn.autocommit is True
     with pytest.raises(HarlequinQueryError):
         read_only_connection.execute("insert into foo values (2)")
+
+
+def test_foreign_key_columns(
+    connection: HarlequinPostgresConnection,
+) -> None:
+    connection.execute("create table fk_parent (id int primary key)")
+    connection.execute(
+        "create table fk_child "
+        "(id int primary key, parent_id int references fk_parent(id))"
+    )
+
+    cur = connection.execute("select id, parent_id from fk_child")
+    assert isinstance(cur, HarlequinPostgresCursor)
+    fk = cur.foreign_key_columns()
+
+    # result column 1 (parent_id) is a foreign key -> fk_parent.id
+    assert 1 in fk
+    ref_table, ref_col = fk[1]
+    assert "fk_parent" in ref_table
+    assert "id" in ref_col
+    # the primary key column is not itself a foreign key
+    assert 0 not in fk
+
+
+def test_foreign_key_columns_across_a_join(
+    connection: HarlequinPostgresConnection,
+) -> None:
+    connection.execute("create table fk_parent (id int primary key)")
+    connection.execute(
+        "create table fk_child "
+        "(id int primary key, parent_id int references fk_parent(id))"
+    )
+
+    # each result column carries its own source table, so an FK is detected
+    # even when the result comes from a join.
+    cur = connection.execute(
+        "select c.parent_id from fk_child c join fk_parent p on c.parent_id = p.id"
+    )
+    assert isinstance(cur, HarlequinPostgresCursor)
+    fk = cur.foreign_key_columns()
+    assert 0 in fk
+    ref_table, _ = fk[0]
+    assert "fk_parent" in ref_table
+
+
+def test_no_foreign_keys_returns_empty(
+    connection: HarlequinPostgresConnection,
+) -> None:
+    connection.execute("create table plain (a int, b text)")
+    cur = connection.execute("select a, b from plain")
+    assert isinstance(cur, HarlequinPostgresCursor)
+    assert cur.foreign_key_columns() == {}

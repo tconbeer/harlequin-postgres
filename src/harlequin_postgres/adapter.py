@@ -181,6 +181,55 @@ class HarlequinPostgresCursor(HarlequinCursor):
         assert cur.description is not None
         self.description = cur.description.copy()
         self._limit: int | None = None
+        # Capture each result column's source table OID and column number (attnum)
+        # from the libpq result while the cursor is still open. A table OID of 0
+        # means the column is computed/derived (not a plain table column), so it
+        # can't be a foreign key. This drives the FK-navigation feature.
+        self._column_sources: list[tuple[int, int]] = []
+        try:
+            pgresult = cur.pgresult
+            if pgresult is not None:
+                self._column_sources = [
+                    (pgresult.ftable(i), pgresult.ftablecol(i))
+                    for i in range(pgresult.nfields)
+                ]
+        except Exception:
+            self._column_sources = []
+
+    def foreign_key_columns(self) -> dict[int, tuple[str, str]]:
+        """Map result-column index -> (referenced_qualified_table, referenced_column)
+        for result columns that are single-column foreign keys. Works across joins,
+        since each column carries its own source table. Returns {} if none."""
+        source_oids = sorted({oid for oid, _ in self._column_sources if oid})
+        if not source_oids:
+            return {}
+        query = """
+            select con.conrelid as toid, con.conkey[1] as attnum,
+                   fn.nspname as ref_schema, fc.relname as ref_table,
+                   fa.attname as ref_col
+            from pg_constraint con
+            join pg_class fc on con.confrelid = fc.oid
+            join pg_namespace fn on fc.relnamespace = fn.oid
+            join pg_attribute fa on fa.attrelid = con.confrelid
+                and fa.attnum = con.confkey[1]
+            where con.contype = 'f'
+                and array_length(con.conkey, 1) = 1
+                and con.conrelid = any(%s)
+        """
+        try:
+            with self.conn.pool.connection() as c:
+                rows = c.execute(query, (source_oids,)).fetchall()
+        except Exception:
+            return {}
+        ref_by_source = {
+            (toid, attnum): (f'"{ref_schema}"."{ref_table}"', f'"{ref_col}"')
+            for (toid, attnum, ref_schema, ref_table, ref_col) in rows
+        }
+        return {
+            idx: ref_by_source[(oid, attnum)]
+            for idx, (oid, attnum) in enumerate(self._column_sources)
+            if (oid, attnum) in ref_by_source
+        }
 
     def columns(self) -> list[tuple[str, str]]:
         return [

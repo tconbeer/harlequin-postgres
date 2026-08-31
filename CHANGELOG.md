@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- Adds `HarlequinPostgresCursor.foreign_key_columns()`, which reports the referenced table and column for result columns that are single-column foreign keys (used by Harlequin's foreign-key navigation, tconbeer/harlequin#986). Works across joins, since each result column carries its own source table.
+
 ## [1.4.0] - 2026-08-29
 
 - This adapter now supports Harlequin's `--read-only` option and declares `IMPLEMENTS_READ_ONLY`. Read-only connections are enforced by the server, using `set session characteristics as transaction read only` ([#58](https://github.com/tconbeer/harlequin-postgres/issues/58)).
