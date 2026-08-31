@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- `uuid` values are returned as text, so a result with a uuid column renders in Harlequin instead of failing with a `UnicodeDecodeError` while its column width is measured.
+
 ## [1.4.0] - 2026-08-29
 
 - This adapter now supports Harlequin's `--read-only` option and declares `IMPLEMENTS_READ_ONLY`. Read-only connections are enforced by the server, using `set session characteristics as transaction read only` ([#58](https://github.com/tconbeer/harlequin-postgres/issues/58)).

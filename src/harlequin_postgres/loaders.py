@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 import psycopg
+from psycopg.adapt import Loader
 from psycopg.errors import DataError
-
-# Subclass existing adapters so that the base case is handled normally.
+from psycopg.pq import Format
 from psycopg.types.datetime import (
     DateBinaryLoader,
     DateLoader,
@@ -15,6 +16,9 @@ from psycopg.types.datetime import (
     TimestamptzBinaryLoader,
     TimestamptzLoader,
 )
+
+# Subclass existing adapters so that the base case is handled normally.
+from psycopg.types.string import TextLoader
 
 if TYPE_CHECKING:
     from psycopg.adapt import Buffer, Loader
@@ -103,4 +107,29 @@ def register_inf_loaders() -> None:
     the updated loaders (that allow infinity date/timestamps)
     """
     for type_name, loader in INF_LOADERS:
+        psycopg.adapters.register_loader(type_name, loader)
+
+
+class UUIDTextBinaryLoader(Loader):
+    """Loads a binary-format uuid as its text form, like the text-format loader."""
+
+    format = Format.BINARY
+
+    def load(self, data: "Buffer") -> str:
+        return str(UUID(bytes=bytes(data)))
+
+
+UUID_LOADERS: list[tuple[str, type[Loader]]] = [
+    ("uuid", TextLoader),
+    ("uuid", UUIDTextBinaryLoader),
+]
+
+
+def register_uuid_loaders() -> None:
+    """
+    Register loaders that return uuid values as text. A uuid.UUID becomes an
+    Arrow extension type whose raw bytes textual-fastdatatable cannot measure,
+    so a result with a uuid column would fail to render.
+    """
+    for type_name, loader in UUID_LOADERS:
         psycopg.adapters.register_loader(type_name, loader)

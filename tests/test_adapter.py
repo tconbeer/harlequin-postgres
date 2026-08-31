@@ -13,6 +13,7 @@ from textual_fastdatatable.backend import create_backend
 from harlequin_postgres.adapter import (
     HarlequinPostgresAdapter,
     HarlequinPostgresConnection,
+    HarlequinPostgresCursor,
 )
 
 if sys.version_info < (3, 10):
@@ -294,3 +295,12 @@ def test_read_only_enforced_in_autocommit_session(
     assert read_only_connection._main_conn.autocommit is True
     with pytest.raises(HarlequinQueryError):
         read_only_connection.execute("insert into foo values (2)")
+
+
+def test_uuid_values_are_text(connection: HarlequinPostgresConnection) -> None:
+    cur = connection.execute("select '0e8f4e9a-8d3b-4c8a-9f1e-1d2c3b4a5f60'::uuid as u")
+    assert isinstance(cur, HarlequinPostgresCursor)
+    backend = create_backend(cur.fetchall())
+    assert backend.get_cell_at(0, 0) == "0e8f4e9a-8d3b-4c8a-9f1e-1d2c3b4a5f60"
+    # the width measurement that used to choke on the uuid's raw bytes
+    assert backend.column_content_widths[0] == 36

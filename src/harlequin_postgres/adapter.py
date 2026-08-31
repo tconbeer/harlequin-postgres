@@ -37,7 +37,7 @@ from harlequin_postgres.catalog import (
 )
 from harlequin_postgres.cli_options import POSTGRES_OPTIONS
 from harlequin_postgres.completions import _get_completions
-from harlequin_postgres.loaders import register_inf_loaders
+from harlequin_postgres.loaders import register_inf_loaders, register_uuid_loaders
 
 _LIKE_ESCAPE = "\\"
 """What escapes a LIKE metacharacter in a term the caller typed."""
@@ -805,6 +805,7 @@ class HarlequinPostgresAdapter(HarlequinAdapter):
         # before creating the connection, register updated type adapters, so
         # all subsequent connections will use those adapters
         register_inf_loaders()
+        register_uuid_loaders()
         conn = HarlequinPostgresConnection(
             self.conn_str, options=self.options, read_only=self.read_only
         )
