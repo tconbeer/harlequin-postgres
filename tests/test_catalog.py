@@ -1,3 +1,5 @@
+from typing import Callable
+
 import pytest
 from harlequin.catalog import CatalogSearchResult, InteractiveCatalogItem
 from harlequin.exception import HarlequinQueryError
@@ -45,8 +47,9 @@ def test_catalog(connection_with_objects: HarlequinPostgresConnection) -> None:
     [test_db_item] = filter(lambda item: item.label == "test", catalog.items)
     assert isinstance(test_db_item, InteractiveCatalogItem)
     assert isinstance(test_db_item, DatabaseCatalogItem)
-    assert not test_db_item.children
-    assert not test_db_item.loaded
+    # the connected database is loaded eagerly, for its search path
+    assert test_db_item.children
+    assert test_db_item.loaded
 
     schema_items = test_db_item.fetch_children()
     assert all(isinstance(item, SchemaCatalogItem) for item in schema_items)
@@ -154,6 +157,101 @@ def test_catalog_items_carry_type_names(
         ("a", "#", "integer"),
         ("b", "s", "text"),
     ]
+
+
+def _schema_items(
+    conn: HarlequinPostgresConnection,
+) -> dict[str, SchemaCatalogItem]:
+    """The schemas the catalog holds for the connected database, by label."""
+    [db_item] = [
+        item
+        for item in conn.get_catalog().items
+        if isinstance(item, DatabaseCatalogItem) and item.label == "test"
+    ]
+    assert db_item.loaded
+    return {
+        item.label: item
+        for item in db_item.children
+        if isinstance(item, SchemaCatalogItem)
+    }
+
+
+def test_catalog_loads_the_default_search_path(
+    connection_with_objects: HarlequinPostgresConnection,
+) -> None:
+    """A relation in `public` is in the catalog without expanding anything."""
+    conn = connection_with_objects
+    conn.execute("create table public.quux as select 1 as a")
+
+    schema_items = _schema_items(conn)
+
+    public_item = schema_items["public"]
+    assert public_item.loaded
+    assert [item.label for item in public_item.children] == ["quux"]
+    # the rest of the catalog is still lazy
+    assert not schema_items["one"].loaded
+    assert not schema_items["one"].children
+    # and so are the columns under a schema that was loaded
+    [quux_item] = public_item.children
+    assert isinstance(quux_item, TableCatalogItem)
+    assert not quux_item.loaded
+    assert not quux_item.children
+
+
+def test_catalog_loads_every_schema_on_the_search_path(
+    connection_with_objects: HarlequinPostgresConnection,
+    connect_again: Callable[..., HarlequinPostgresConnection],
+) -> None:
+    """A path of several schemas, spelled the many ways Postgres allows."""
+    connection_with_objects.execute(
+        'alter database test set search_path to "$user", one, "two", not_a_schema'
+    )
+
+    schema_items = _schema_items(connect_again())
+
+    assert schema_items["one"].loaded
+    assert sorted(item.label for item in schema_items["one"].children) == [
+        "bar",
+        "baz",
+        "foo",
+    ]
+    assert schema_items["two"].loaded
+    assert [item.label for item in schema_items["two"].children] == ["qux"]
+    # public is no longer on the path, and a schema that does not exist is
+    # not on it either -- `current_schemas()` drops both
+    assert not schema_items["public"].loaded
+    assert not schema_items["four"].loaded
+
+
+def test_catalog_is_lazy_with_an_empty_search_path(
+    connection_with_objects: HarlequinPostgresConnection,
+    connect_again: Callable[..., HarlequinPostgresConnection],
+) -> None:
+    """Nothing resolves unqualified, so nothing is loaded up front."""
+    connection_with_objects.execute("alter database test set search_path to ''")
+
+    [db_item] = [
+        item
+        for item in connect_again().get_catalog().items
+        if isinstance(item, DatabaseCatalogItem) and item.label == "test"
+    ]
+
+    assert not db_item.loaded
+    assert not db_item.children
+
+
+def test_catalog_loads_the_search_path_from_the_connection_string(
+    connection_with_objects: HarlequinPostgresConnection,
+    connect_again: Callable[..., HarlequinPostgresConnection],
+) -> None:
+    """The `options` a caller passes in the DSN set the path, like any other client."""
+    conn = connect_again("options=-csearch_path%3Dfour")
+
+    schema_items = _schema_items(conn)
+
+    assert schema_items["four"].loaded
+    assert [item.label for item in schema_items["four"].children] == ["foo"]
+    assert not schema_items["public"].loaded
 
 
 @pytest.fixture
