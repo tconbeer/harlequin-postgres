@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-09-15
+
 - Harlequin now loads the relations in the schemas on your connection's `search_path` as soon as it connects, so autocomplete suggests `my_table` for `select * from my_ta...` without you first qualifying the name or expanding the schema in the Data Catalog ([tconbeer/harlequin#1143](https://github.com/tconbeer/harlequin/discussions/1143)).
 
 ## [1.4.1] - 2026-08-31
@@ -102,7 +104,8 @@ All notable changes to this project will be documented in this file.
 
 - Adds a basic Postgres adapter with most common connection options.
 
-[unreleased]: https://github.com/tconbeer/harlequin-postgres/compare/1.4.1...HEAD
+[unreleased]: https://github.com/tconbeer/harlequin-postgres/compare/1.5.0...HEAD
+[1.5.0]: https://github.com/tconbeer/harlequin-postgres/compare/1.4.1...1.5.0
 [1.4.1]: https://github.com/tconbeer/harlequin-postgres/compare/1.4.0...1.4.1
 [1.4.0]: https://github.com/tconbeer/harlequin-postgres/compare/1.3.1...1.4.0
 [1.3.1]: https://github.com/tconbeer/harlequin-postgres/compare/1.3.0...1.3.1
