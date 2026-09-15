@@ -376,7 +376,38 @@ class HarlequinPostgresConnection(HarlequinConnection):
             DatabaseCatalogItem.from_label(label=db, connection=self)
             for (db,) in databases
         ]
+        self._load_search_path(db_items)
         return Catalog(items=db_items)
+
+    def _load_search_path(self, db_items: list[CatalogItem]) -> None:
+        """Load the relations a query can name without qualifying them.
+
+        The catalog is lazy and autocomplete only offers what it holds, so
+        `select * from tbl` had nothing to complete until the user expanded a
+        schema by hand. The schemas on the search path are the ones this
+        connection resolves an unqualified name in, so they are the ones worth
+        loading up front; the columns under them are still lazy.
+        """
+        database, search_path = self._get_search_path()
+        if not search_path:
+            return
+        connected_db_item = next(
+            (item for item in db_items if item.label == database), None
+        )
+        if not isinstance(connected_db_item, DatabaseCatalogItem):
+            return
+
+        schema_items: list[CatalogItem] = list(connected_db_item.fetch_children())
+        connected_db_item.children = schema_items
+        connected_db_item.loaded = True
+
+        for schema_item in schema_items:
+            if not isinstance(schema_item, SchemaCatalogItem):
+                continue
+            if schema_item.label not in search_path:
+                continue
+            schema_item.children = list(schema_item.fetch_children())
+            schema_item.loaded = True
 
     def search_catalog(
         self, term: str, kind: CatalogSearchKind = "all"
@@ -512,6 +543,22 @@ class HarlequinPostgresConnection(HarlequinConnection):
             )
             results: list[tuple[str]] = cur.fetchall()
         return results
+
+    def _get_search_path(self) -> tuple[str, set[str]]:
+        """The connected database, and the schemas it resolves unqualified names in.
+
+        `current_schemas()` is the resolved search path: it expands `"$user"`,
+        drops schemas that do not exist, and reports what the server will
+        actually search, so nothing here has to parse the many spellings the
+        `search_path` setting allows.
+        """
+        with self.pool.connection() as conn, conn.cursor() as cur:
+            cur.execute("select current_database(), current_schemas(false)")
+            result: tuple[str, list[str] | None] | None = cur.fetchone()
+        if result is None:
+            return "", set()
+        database, search_path = result
+        return database, set(search_path or [])
 
     def _get_schemas(self, dbname: str) -> list[tuple[str]]:
         with self.pool.connection() as conn, conn.cursor() as cur:

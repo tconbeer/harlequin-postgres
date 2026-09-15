@@ -70,6 +70,16 @@ hsql -a postgres "postgres://my-user:my-pass@localhost:5432/my-database" --catal
 
 A term matches a database, schema, relation, or column whose name contains it, case-insensitively. Relations and columns come from the connected database, since that is the database the catalog shows them for; the other databases on the server are matched by name, which is all the catalog's top level shows for them.
 
+## Search Path
+
+When Harlequin connects, this adapter loads the relations in the schemas on the connection's `search_path` (usually just `public`), so autocomplete offers them right away and `select * from my_table` completes without qualifying the name or expanding the schema in the Data Catalog. The rest of the catalog still loads as you browse it.
+
+The path is whatever this connection resolves, so setting it any of the usual ways works, including in the DSN:
+
+```bash
+harlequin -a postgres "postgres://my-user@localhost:5432/my-database?options=-csearch_path%3Danalytics,public"
+```
+
 ## Environment Variables
 
 Harlequin's Postgres driver will load connection information from the standard `PG*` environment variables. Any options supplied at the command-line will override environment variables.

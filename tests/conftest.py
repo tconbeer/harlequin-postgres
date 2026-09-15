@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sys
-from typing import Generator
+from typing import Callable, Generator
 
 import psycopg
 import pytest
@@ -39,6 +39,29 @@ def connection() -> Generator[HarlequinPostgresConnection, None, None]:
     cur.execute("drop database if exists test;")
     cur.close()
     pgconn.close()
+
+
+@pytest.fixture
+def connect_again(
+    connection: HarlequinPostgresConnection,
+) -> Generator[Callable[..., HarlequinPostgresConnection], None, None]:
+    """Opens more connections to the same test database, closed at teardown.
+
+    A connection resolves its search path when it connects, so a test that
+    changes the search path needs a new one.
+    """
+    connections: list[HarlequinPostgresConnection] = []
+
+    def _connect(dsn_params: str = "") -> HarlequinPostgresConnection:
+        conn_str = f"{TEST_DB_CONN}/?{dsn_params}" if dsn_params else TEST_DB_CONN
+        conn = HarlequinPostgresAdapter(conn_str=(conn_str,), dbname="test").connect()
+        connections.append(conn)
+        return conn
+
+    yield _connect
+
+    for conn in connections:
+        conn.close()
 
 
 @pytest.fixture

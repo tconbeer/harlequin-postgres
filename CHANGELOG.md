@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- Harlequin now loads the relations in the schemas on your connection's `search_path` as soon as it connects, so autocomplete suggests `my_table` for `select * from my_ta...` without you first qualifying the name or expanding the schema in the Data Catalog ([tconbeer/harlequin#1143](https://github.com/tconbeer/harlequin/discussions/1143)).
+
 ## [1.4.1] - 2026-08-31
 
 - Fixes noisy `rolling back returned connection:` warnings from `psycopg_pool`, one per catalog query, by returning pooled connections outside of a transaction. Catalog and completion queries now borrow their connection with `pool.connection()`, which also returns the connection to the pool if the query raises ([#61](https://github.com/tconbeer/harlequin-postgres/issues/61)).
