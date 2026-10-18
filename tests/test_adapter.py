@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import sys
+import time
 from datetime import date, datetime
 
 import psycopg
@@ -171,6 +172,14 @@ def test_inf_timestamps(connection: HarlequinPostgresConnection) -> None:
     ]
 
 
+def _psycopg_messages(caplog: pytest.LogCaptureFixture) -> list[str]:
+    return [
+        record.getMessage()
+        for record in caplog.records
+        if record.name.startswith("psycopg")
+    ]
+
+
 def test_pooled_queries_return_idle_connections(
     connection: HarlequinPostgresConnection,
     caplog: pytest.LogCaptureFixture,
@@ -199,11 +208,7 @@ def test_pooled_queries_return_idle_connections(
         connection.search_catalog("foo")
         connection.get_completions()
 
-    assert [
-        record.getMessage()
-        for record in caplog.records
-        if record.name.startswith("psycopg")
-    ] == []
+    assert _psycopg_messages(caplog) == []
 
     with connection.pool.connection() as conn:
         assert conn.info.transaction_status == TransactionStatus.IDLE
@@ -232,14 +237,6 @@ def test_failed_pooled_query_does_not_leak_connections(
     assert connection.get_completions()
 
 
-def _psycopg_messages(caplog: pytest.LogCaptureFixture) -> list[str]:
-    return [
-        record.getMessage()
-        for record in caplog.records
-        if record.name.startswith("psycopg")
-    ]
-
-
 @pytest.mark.parametrize(
     "transaction_mode,query",
     [
@@ -255,19 +252,27 @@ def test_close_discards_open_transaction_quietly(
     query: str,
 ) -> None:
     """
-    Closing with a transaction open discards it, as psql does on exit, without
-    psycopg_pool logging a warning about it to stderr.
+    Closing with a transaction open discards it without psycopg_pool logging a
+    warning.
     """
     if connection.transaction_mode.label != transaction_mode:
         connection.toggle_transaction_mode()
     connection.execute(query)
     assert connection._main_conn.info.transaction_status == TransactionStatus.INTRANS
+    main_backend_pid = connection._main_conn.info.backend_pid
 
     with caplog.at_level(logging.WARNING, logger="psycopg.pool"):
         connection.close()
 
     assert _psycopg_messages(caplog) == []
     with psycopg.connect(conninfo=TEST_DB_CONN, dbname="test") as conn:
+        # the backend exits shortly after the client disconnects
+        deadline = time.monotonic() + 5
+        while conn.execute(
+            "select 1 from pg_stat_activity where pid = %s", (main_backend_pid,)
+        ).fetchone():
+            assert time.monotonic() < deadline, "main connection's backend survived"
+            time.sleep(0.05)
         result = conn.execute("select to_regclass('not_committed')").fetchone()
     assert result == (None,)
 
@@ -295,7 +300,7 @@ def test_close_tolerates_broken_main_connection(
 ) -> None:
     with psycopg.connect(conninfo=TEST_DB_CONN, dbname="postgres") as conn:
         conn.execute(
-            "select pg_terminate_backend(%s)",
+            "select pg_terminate_backend(%s, 5000)",
             (connection._main_conn.info.backend_pid,),
         )
     with pytest.raises(HarlequinQueryError):

@@ -4,9 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-### Bug Fixes
-
-- Closing a connection no longer prints a `rolling back returned connection:` warning when a transaction is open, as after `hsql -c "begin; select 1"`; the open transaction is discarded, as it is when psql exits ([tconbeer/harlequin#1188](https://github.com/tconbeer/harlequin/issues/1188)).
+- No longer prints a `rolling back returned connection` warning when a connection with an open transaction is closed, e.g. after `hsql -c "begin; select 1"`.
 
 ## [1.5.0] - 2026-09-15
 
