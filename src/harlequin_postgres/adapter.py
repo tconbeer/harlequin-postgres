@@ -506,8 +506,11 @@ class HarlequinPostgresConnection(HarlequinConnection):
             return _get_completions(conn)
 
     def close(self) -> None:
-        self.pool.putconn(self._main_conn)
+        # the main connection is closed rather than returned to the pool, so the
+        # server discards any transaction it has open, as it does when psql
+        # exits, and the pool has nothing to roll back and warn about.
         self.pool.close()
+        self._main_conn.close()
 
     @property
     def transaction_mode(self) -> HarlequinTransactionMode:

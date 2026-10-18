@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Bug Fixes
+
+- Closing a connection no longer prints a `rolling back returned connection:` warning when a transaction is open, as after `hsql -c "begin; select 1"`; the open transaction is discarded, as it is when psql exits ([tconbeer/harlequin#1188](https://github.com/tconbeer/harlequin/issues/1188)).
+
 ## [1.5.0] - 2026-09-15
 
 - Harlequin now loads the relations in the schemas on your connection's `search_path` as soon as it connects, so autocomplete suggests `my_table` for `select * from my_ta...` without you first qualifying the name or expanding the schema in the Data Catalog ([tconbeer/harlequin#1143](https://github.com/tconbeer/harlequin/discussions/1143)).
