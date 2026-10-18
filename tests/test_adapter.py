@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import sys
+import threading
 import time
 from datetime import date, datetime
 
@@ -56,8 +57,12 @@ def test_init_extra_kwargs() -> None:
     ],
 )
 def test_connect_raises_connection_error(conn_str: tuple[str]) -> None:
+    threads_before_connect = set(threading.enumerate())
     with pytest.raises(HarlequinConnectionError):
         _ = HarlequinPostgresAdapter(conn_str=conn_str, connect_timeout=0.1).connect()
+    # a pool left open keeps retrying the connection in its threads
+    leaked_threads = set(threading.enumerate()) - threads_before_connect
+    assert [thread.name for thread in leaked_threads] == []
 
 
 @pytest.mark.parametrize(

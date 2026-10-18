@@ -255,6 +255,9 @@ class HarlequinPostgresConnection(HarlequinConnection):
             )
             self._main_conn: Connection = self.pool.getconn()
         except Exception as e:
+            # a pool that never connected keeps retrying in its threads until closed
+            if hasattr(self, "pool"):
+                self.pool.close()
             raise HarlequinConnectionError(
                 msg=str(e), title="Harlequin could not connect to Postgres."
             ) from e
