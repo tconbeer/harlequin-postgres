@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-10-18
+
 - No longer prints a `rolling back returned connection` warning when a connection with an open transaction is closed, e.g. after `hsql -c "begin; select 1"`.
 
 ## [1.5.0] - 2026-09-15
@@ -106,7 +108,8 @@ All notable changes to this project will be documented in this file.
 
 - Adds a basic Postgres adapter with most common connection options.
 
-[unreleased]: https://github.com/tconbeer/harlequin-postgres/compare/1.5.0...HEAD
+[unreleased]: https://github.com/tconbeer/harlequin-postgres/compare/1.5.1...HEAD
+[1.5.1]: https://github.com/tconbeer/harlequin-postgres/compare/1.5.0...1.5.1
 [1.5.0]: https://github.com/tconbeer/harlequin-postgres/compare/1.4.1...1.5.0
 [1.4.1]: https://github.com/tconbeer/harlequin-postgres/compare/1.4.0...1.4.1
 [1.4.0]: https://github.com/tconbeer/harlequin-postgres/compare/1.3.1...1.4.0
