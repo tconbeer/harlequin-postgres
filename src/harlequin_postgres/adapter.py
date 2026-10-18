@@ -255,6 +255,9 @@ class HarlequinPostgresConnection(HarlequinConnection):
             )
             self._main_conn: Connection = self.pool.getconn()
         except Exception as e:
+            # a pool that never connected keeps retrying in its threads until closed
+            if hasattr(self, "pool"):
+                self.pool.close()
             raise HarlequinConnectionError(
                 msg=str(e), title="Harlequin could not connect to Postgres."
             ) from e
@@ -506,8 +509,10 @@ class HarlequinPostgresConnection(HarlequinConnection):
             return _get_completions(conn)
 
     def close(self) -> None:
-        self.pool.putconn(self._main_conn)
+        # closing (not returning) the main connection lets the server discard an
+        # open transaction; the pool would warn as it rolled one back.
         self.pool.close()
+        self._main_conn.close()
 
     @property
     def transaction_mode(self) -> HarlequinTransactionMode:
