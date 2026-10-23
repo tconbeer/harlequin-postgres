@@ -244,10 +244,9 @@ class HarlequinPostgresConnection(HarlequinConnection):
                     "Invalid value for connection_timeout."
                 ),
             ) from e
-        main_options = dict(options)
-        if "connect_timeout" not in self.conn_info:
-            # libpq waits forever by default, and wants whole seconds (at least 2)
-            main_options["connect_timeout"] = max(2, math.ceil(timeout))
+        # psycopg enforces connect_timeout itself, defaulting to 130s, and would
+        # truncate a fraction like 0.1 to 0, which also means that default.
+        main_options = {**options, "connect_timeout": max(2, math.ceil(timeout))}
         try:
             # connect directly, not from the pool: the pool only logs connection
             # errors and retries, so getconn() would wait out the timeout and
@@ -261,7 +260,8 @@ class HarlequinPostgresConnection(HarlequinConnection):
                 isinstance(e, OperationalError)
                 and e.pgconn is not None
                 and e.pgconn.needs_password
-            ):
+            ) or "no password supplied" in msg:
+                # psycopg drops pgconn when every one of several addresses failed
                 msg += (
                     "\n\nThe server requires a password. Supply one with the "
                     "--password option, the PGPASSWORD environment variable, or a "
@@ -275,7 +275,8 @@ class HarlequinPostgresConnection(HarlequinConnection):
             self.pool: ConnectionPool = ConnectionPool(
                 conninfo=conn_str[0] if conn_str and conn_str[0] else "",
                 min_size=1,
-                max_size=5,
+                # plus the main connection, at most 5 connections to the server
+                max_size=4,
                 kwargs=options,
                 open=True,
                 timeout=timeout,
