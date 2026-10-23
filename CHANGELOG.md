@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.5.2] - 2026-10-23
+
 - Connection errors are now reported immediately with the server's message, instead of `couldn't get a connection after 30.00 sec`, and suggest how to supply a password when one is required ([#73](https://github.com/tconbeer/harlequin-postgres/issues/73)).
 
 ## [1.5.1] - 2026-10-18
@@ -110,7 +112,8 @@ All notable changes to this project will be documented in this file.
 
 - Adds a basic Postgres adapter with most common connection options.
 
-[unreleased]: https://github.com/tconbeer/harlequin-postgres/compare/1.5.1...HEAD
+[unreleased]: https://github.com/tconbeer/harlequin-postgres/compare/1.5.2...HEAD
+[1.5.2]: https://github.com/tconbeer/harlequin-postgres/compare/1.5.1...1.5.2
 [1.5.1]: https://github.com/tconbeer/harlequin-postgres/compare/1.5.0...1.5.1
 [1.5.0]: https://github.com/tconbeer/harlequin-postgres/compare/1.4.1...1.5.0
 [1.4.1]: https://github.com/tconbeer/harlequin-postgres/compare/1.4.0...1.4.1
