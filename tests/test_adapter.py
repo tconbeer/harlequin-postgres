@@ -5,6 +5,7 @@ import sys
 import threading
 import time
 from datetime import date, datetime
+from pathlib import Path
 
 import psycopg
 import pytest
@@ -63,6 +64,56 @@ def test_connect_raises_connection_error(conn_str: tuple[str]) -> None:
     # a pool left open keeps retrying the connection in its threads
     leaked_threads = set(threading.enumerate()) - threads_before_connect
     assert [thread.name for thread in leaked_threads] == []
+
+
+@pytest.fixture
+def no_stored_password(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Keeps libpq from finding a password in the environment or a .pgpass file."""
+    monkeypatch.delenv("PGPASSWORD", raising=False)
+    monkeypatch.setenv("PGPASSFILE", str(tmp_path / "nonexistent.pgpass"))
+
+
+@pytest.mark.usefixtures("no_stored_password")
+def test_connect_without_password_fails_fast_with_hint() -> None:
+    """
+    The server's error must be raised right away, not a PoolTimeout after the
+    pool spends the whole timeout retrying (#73).
+    """
+    threads_before_connect = set(threading.enumerate())
+    start = time.monotonic()
+    with pytest.raises(HarlequinConnectionError) as exc_info:
+        HarlequinPostgresAdapter(
+            conn_str=("postgresql://postgres@localhost:5432",), connect_timeout=30
+        ).connect()
+    assert time.monotonic() - start < 5
+    assert "no password supplied" in exc_info.value.msg
+    assert "The server requires a password" in exc_info.value.msg
+    assert "--password" in exc_info.value.msg
+    leaked_threads = set(threading.enumerate()) - threads_before_connect
+    assert [thread.name for thread in leaked_threads] == []
+
+
+@pytest.mark.usefixtures("no_stored_password")
+def test_connect_with_wrong_password_fails_fast_without_hint() -> None:
+    start = time.monotonic()
+    with pytest.raises(HarlequinConnectionError) as exc_info:
+        HarlequinPostgresAdapter(
+            conn_str=("postgresql://postgres:wrong@localhost:5432",),
+            connect_timeout=30,
+        ).connect()
+    assert time.monotonic() - start < 5
+    assert "password authentication failed" in exc_info.value.msg
+    assert "The server requires a password" not in exc_info.value.msg
+
+
+def test_connect_to_nonexistent_database_fails_fast() -> None:
+    start = time.monotonic()
+    with pytest.raises(HarlequinConnectionError) as exc_info:
+        HarlequinPostgresAdapter(
+            conn_str=(TEST_DB_CONN,), dbname="does_not_exist", connect_timeout=30
+        ).connect()
+    assert time.monotonic() - start < 5
+    assert 'database "does_not_exist" does not exist' in exc_info.value.msg
 
 
 @pytest.mark.parametrize(

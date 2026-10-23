@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- Connection errors are now reported immediately, with the server's message, instead of as `couldn't get a connection after 30.00 sec` once the timeout expires. If the server requires a password and none was supplied, the error now explains how to supply one: with `--password`, the `PGPASSWORD` environment variable, or a `.pgpass` file ([#73](https://github.com/tconbeer/harlequin-postgres/issues/73)).
+
 ## [1.5.1] - 2026-10-18
 
 - No longer prints a `rolling back returned connection` warning when a connection with an open transaction is closed, e.g. after `hsql -c "begin; select 1"`.
