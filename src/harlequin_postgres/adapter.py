@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from itertools import cycle
 from typing import Any, Sequence
 
@@ -17,7 +18,7 @@ from harlequin.catalog import (
     CatalogSearchResult,
 )
 from harlequin.exception import HarlequinConnectionError, HarlequinQueryError
-from psycopg import Connection, Cursor, conninfo
+from psycopg import Connection, Cursor, OperationalError, conninfo
 from psycopg.errors import Error, QueryCanceled
 from psycopg.pq import TransactionStatus
 from psycopg_pool import ConnectionPool
@@ -243,21 +244,46 @@ class HarlequinPostgresConnection(HarlequinConnection):
                     "Invalid value for connection_timeout."
                 ),
             ) from e
+        # psycopg enforces connect_timeout itself, defaulting to 130s, and would
+        # truncate a fraction like 0.1 to 0, which also means that default.
+        main_options = {**options, "connect_timeout": max(2, math.ceil(timeout))}
         try:
+            # connect directly, not from the pool: the pool only logs connection
+            # errors and retries, so getconn() would wait out the timeout and
+            # raise PoolTimeout instead of the server's error.
+            self._main_conn: Connection = Connection.connect(
+                conn_str[0] if conn_str and conn_str[0] else "", **main_options
+            )
+        except Exception as e:
+            msg = str(e)
+            if (
+                isinstance(e, OperationalError)
+                and e.pgconn is not None
+                and e.pgconn.needs_password
+            ) or "no password supplied" in msg:
+                # psycopg drops pgconn when every one of several addresses failed
+                msg += (
+                    "\n\nThe server requires a password. Supply one with the "
+                    "--password option, the PGPASSWORD environment variable, or a "
+                    ".pgpass file."
+                )
+            raise HarlequinConnectionError(
+                msg=msg, title="Harlequin could not connect to Postgres."
+            ) from e
+        try:
+            self._configure_connection(self._main_conn)
             self.pool: ConnectionPool = ConnectionPool(
                 conninfo=conn_str[0] if conn_str and conn_str[0] else "",
-                min_size=2,
-                max_size=5,
+                min_size=1,
+                # plus the main connection, at most 5 connections to the server
+                max_size=4,
                 kwargs=options,
                 open=True,
                 timeout=timeout,
                 configure=self._configure_connection,
             )
-            self._main_conn: Connection = self.pool.getconn()
         except Exception as e:
-            # a pool that never connected keeps retrying in its threads until closed
-            if hasattr(self, "pool"):
-                self.pool.close()
+            self._main_conn.close()
             raise HarlequinConnectionError(
                 msg=str(e), title="Harlequin could not connect to Postgres."
             ) from e
@@ -283,9 +309,9 @@ class HarlequinPostgresConnection(HarlequinConnection):
 
     def _configure_connection(self, conn: Connection) -> None:
         """
-        Called by the pool for every connection that it creates, so that read-only
-        mode is enforced by every connection, not just the main one. Must leave
-        the connection idle (outside of a transaction).
+        Called for the main connection, and by the pool for every connection that
+        it creates, so that read-only mode is enforced by every connection. Must
+        leave the connection idle (outside of a transaction).
         """
         if not self.read_only:
             return
