@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING, Literal, Sequence
 from harlequin.catalog import CatalogItem
 from harlequin.exception import HarlequinQueryError
 
+from harlequin_postgres.quoting import quote_literal
+
 if TYPE_CHECKING:
     from harlequin.driver import HarlequinDriver
 
@@ -143,7 +145,7 @@ def show_list_objects(
 
     # can't use isinstance due to circular reference
     if type(item).__name__ == "SchemaCatalogItem":
-        where_clause = f"and n.nspname = '{item.label}'"
+        where_clause = f"and n.nspname = {quote_literal(item.label)}"
     else:
         where_clause = (
             "and n.nspname not in ('pg_catalog', 'pg_toast', 'information_schema')"
@@ -194,7 +196,7 @@ def show_list_indexes(
 
     # can't use isinstance due to circular reference
     if type(item).__name__ == "SchemaCatalogItem":
-        where_clause = f"and n.nspname = '{item.label}'"
+        where_clause = f"and n.nspname = {quote_literal(item.label)}"
     else:
         where_clause = (
             "and n.nspname not in ('pg_catalog', 'pg_toast', 'information_schema')"
@@ -252,6 +254,8 @@ def show_describe_relation(
             severity="error",
         )
         return
+    relation_literal = quote_literal(item.label)
+    schema_literal = quote_literal(item.parent.label)
     driver.insert_text_in_new_buffer(
         dedent(
             f"""
@@ -260,7 +264,7 @@ def show_describe_relation(
                     select i.indexrelid, c.oid as rel_oid, unnest(i.indkey) as attnum
                     from pg_catalog.pg_index i
                     join pg_catalog.pg_class c on c.oid = i.indrelid
-                    where c.relname = '{item.label}'
+                    where c.relname = {relation_literal}
                 ),
                 index_column_counts as (
                     select rel_oid, attnum, count(*) as cnt 
@@ -271,7 +275,7 @@ def show_describe_relation(
                     select con.oid, c.oid as rel_oid, unnest(con.conkey) as attnum
                     from pg_catalog.pg_constraint con
                     join pg_catalog.pg_class c on con.conrelid = c.oid
-                    where c.relname = '{item.label}'
+                    where c.relname = {relation_literal}
                 ),
                 constraint_column_counts as (
                     select rel_oid, attnum, count(*) as cnt
@@ -287,7 +291,7 @@ def show_describe_relation(
                     from pg_catalog.pg_constraint con
                     join pg_catalog.pg_class c on con.confrelid = c.oid
                     join pg_catalog.pg_class src on con.conrelid = src.oid
-                    where c.relname = '{item.label}'
+                    where c.relname = {relation_literal}
                 ),
                 fkey_references as (
                     select
@@ -362,8 +366,8 @@ def show_describe_relation(
                 on a.attnum = fkey_references.attnum
                 and a.attrelid = fkey_references.rel_oid
             where
-                c.relname = '{item.label}'
-                and n.nspname = '{item.parent.label}'
+                c.relname = {relation_literal}
+                and n.nspname = {schema_literal}
                 and a.attnum > 0
                 and not a.attisdropped
             order by a.attnum
@@ -382,6 +386,8 @@ def show_describe_table_indexes(
             severity="error",
         )
         return
+    relation_literal = quote_literal(item.label)
+    schema_literal = quote_literal(item.parent.label)
     driver.insert_text_in_new_buffer(
         dedent(
             f"""
@@ -391,7 +397,7 @@ def show_describe_table_indexes(
                         i.indexrelid, c.oid as rel_oid, unnest(i.indkey) as attnum
                     from pg_catalog.pg_index i
                     join pg_catalog.pg_class c on c.oid = i.indrelid
-                    where c.relname = '{item.label}'
+                    where c.relname = {relation_literal}
                 ),
                 index_column_names as (
                     select
@@ -422,8 +428,8 @@ def show_describe_table_indexes(
             left join
                 index_column_names on i.indexrelid = index_column_names.indexrelid
             where
-                c.relname = '{item.label}'
-                and n.nspname = '{item.parent.label}'
+                c.relname = {relation_literal}
+                and n.nspname = {schema_literal}
             """.strip("\n")
         )
     )
@@ -439,6 +445,8 @@ def show_describe_table_constraints(
             severity="error",
         )
         return
+    relation_literal = quote_literal(item.label)
+    schema_literal = quote_literal(item.parent.label)
     driver.insert_text_in_new_buffer(
         dedent(
             f"""
@@ -447,7 +455,7 @@ def show_describe_table_constraints(
                     select con.oid, c.oid as rel_oid, unnest(con.conkey) as attnum
                     from pg_catalog.pg_constraint con
                     join pg_catalog.pg_class c on con.conrelid = c.oid
-                    where c.relname = '{item.label}'
+                    where c.relname = {relation_literal}
                 ),
                 constraint_column_names as (
                     select
@@ -464,7 +472,7 @@ def show_describe_table_constraints(
                     select con.oid, c.oid as rel_oid, unnest(con.confkey) as attnum
                     from pg_catalog.pg_constraint con
                     join pg_catalog.pg_class c on con.conrelid = c.oid
-                    where c.relname = '{item.label}'
+                    where c.relname = {relation_literal}
                 ),
                 constraint_foreign_column_names as (
                     select
@@ -556,8 +564,8 @@ def show_describe_table_constraints(
                 constraint_foreign_column_names
                 on con.oid = constraint_foreign_column_names.oid
             where
-                c.relname = '{item.label}'
-                and n.nspname = '{item.parent.label}'
+                c.relname = {relation_literal}
+                and n.nspname = {schema_literal}
             """.strip("\n")
         )
     )
@@ -569,19 +577,10 @@ def show_view_definition(
 ) -> None:
     if item.connection is None or item.parent is None:
         return
-    view_def_query = f"""
-        select pg_catalog.pg_get_viewdef(c.oid, true)
-        from pg_catalog.pg_class as c
-        left join pg_catalog.pg_namespace n on n.oid = c.relnamespace
-        where c.relname = '{item.label}' and n.nspname = '{item.parent.label}'
-        """.strip("\n")
-    cur = item.connection.execute(view_def_query)
-    if cur is None:
+    view_def = item.connection._get_view_definition(item.parent.label, item.label)
+    if view_def is None:
+        driver.notify(f"Could not find the view {item.label}", severity="error")
         return
-    result = cur.fetchall()
-    if result is None:
-        return
-    view_def: str = result[0][0]
     driver.insert_text_in_new_buffer(
         f"-- View definition for {item.query_name}\n" + view_def
     )

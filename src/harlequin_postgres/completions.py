@@ -31,9 +31,16 @@ def _get_completions(conn: Connection) -> list[HarlequinCompletion]:
 
     with conn.cursor() as cur:
         cur.execute(
-            r"""
+            """
             select distinct
                 routine_name as label,
+                -- quote_ident() also quotes keywords like extract and left,
+                -- which only parse unquoted, so a name that needs no quotes
+                -- is inserted bare
+                case
+                    when routine_name ~ '^[a-z_][a-z0-9_$]*$' then routine_name
+                    else quote_ident(routine_name)
+                end as value,
                 case when routine_type is null then 'agg' else 'fn' end as type_label,
                 case
                     when routine_schema = 'pg_catalog'  --
@@ -43,19 +50,19 @@ def _get_completions(conn: Connection) -> list[HarlequinCompletion]:
             from information_schema.routines
             where
                 length(routine_name) < 37
-                and routine_name not ilike '\_%'
-                and routine_name not ilike 'pg\_%'
-                and routine_name not ilike 'binary\_upgrade\_%'
-
-            ;"""
+                and routine_name not ilike %s
+                and routine_name not ilike %s
+                and routine_name not ilike %s
+            ;""",
+            ("\\_%", "pg\\_%", "binary\\_upgrade\\_%"),
         )
         results = cur.fetchall()
-    for label, type_label, context in results:
+    for label, value, type_label, context in results:
         completions.append(
             HarlequinCompletion(
                 label=label,
                 type_label=type_label,
-                value=label,
+                value=value,
                 priority=1000,
                 context=context,
             )
