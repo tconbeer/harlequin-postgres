@@ -101,13 +101,10 @@ class ViewCatalogItem(RelationCatalogItem):
         label: str,
         type_name: str | None = "VIEW",
     ) -> "ViewCatalogItem":
-        relation_query_name = quote_qualified(parent.label, label)
-        relation_qualified_identifier = (
-            f"{parent.qualified_identifier}.{quote_identifier(label)}"
-        )
+        relation_identifier = quote_qualified(parent.label, label)
         return cls(
-            qualified_identifier=relation_qualified_identifier,
-            query_name=relation_query_name,
+            qualified_identifier=relation_identifier,
+            query_name=relation_identifier,
             label=label,
             type_label="v",
             type_name=type_name,
@@ -130,13 +127,10 @@ class TableCatalogItem(RelationCatalogItem):
         label: str,
         type_name: str | None = "BASE TABLE",
     ) -> "TableCatalogItem":
-        relation_query_name = quote_qualified(parent.label, label)
-        relation_qualified_identifier = (
-            f"{parent.qualified_identifier}.{quote_identifier(label)}"
-        )
+        relation_identifier = quote_qualified(parent.label, label)
         return cls(
-            qualified_identifier=relation_qualified_identifier,
-            query_name=relation_query_name,
+            qualified_identifier=relation_identifier,
+            query_name=relation_identifier,
             label=label,
             type_label="t",
             type_name=type_name,
@@ -153,13 +147,10 @@ class TempTableCatalogItem(TableCatalogItem):
         label: str,
         type_name: str | None = "LOCAL TEMPORARY",
     ) -> "TempTableCatalogItem":
-        relation_query_name = quote_qualified(parent.label, label)
-        relation_qualified_identifier = (
-            f"{parent.qualified_identifier}.{quote_identifier(label)}"
-        )
+        relation_identifier = quote_qualified(parent.label, label)
         return cls(
-            qualified_identifier=relation_qualified_identifier,
-            query_name=relation_query_name,
+            qualified_identifier=relation_identifier,
+            query_name=relation_identifier,
             label=label,
             type_label="tmp",
             type_name=type_name,
@@ -180,13 +171,10 @@ class ForeignCatalogItem(TableCatalogItem):
         label: str,
         type_name: str | None = "FOREIGN",
     ) -> "ForeignCatalogItem":
-        relation_query_name = quote_qualified(parent.label, label)
-        relation_qualified_identifier = (
-            f"{parent.qualified_identifier}.{quote_identifier(label)}"
-        )
+        relation_identifier = quote_qualified(parent.label, label)
         return cls(
-            qualified_identifier=relation_qualified_identifier,
-            query_name=relation_query_name,
+            qualified_identifier=relation_identifier,
+            query_name=relation_identifier,
             label=label,
             type_label="f",
             type_name=type_name,
@@ -203,13 +191,10 @@ class MaterializedViewCatalogItem(RelationCatalogItem):
         label: str,
         type_name: str | None = MATERIALIZED_VIEW,
     ) -> "MaterializedViewCatalogItem":
-        relation_query_name = quote_qualified(parent.label, label)
-        relation_qualified_identifier = (
-            f"{parent.qualified_identifier}.{quote_identifier(label)}"
-        )
+        relation_identifier = quote_qualified(parent.label, label)
         return cls(
-            qualified_identifier=relation_qualified_identifier,
-            query_name=relation_query_name,
+            qualified_identifier=relation_identifier,
+            query_name=relation_identifier,
             label=label,
             type_label="mv",
             type_name=type_name,

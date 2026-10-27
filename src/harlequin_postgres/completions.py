@@ -6,6 +6,8 @@ from pathlib import Path
 from harlequin import HarlequinCompletion
 from psycopg import Connection
 
+from harlequin_postgres.quoting import quote_identifier_if_needed
+
 
 def _get_completions(conn: Connection) -> list[HarlequinCompletion]:
     completions: list[HarlequinCompletion] = []
@@ -34,13 +36,6 @@ def _get_completions(conn: Connection) -> list[HarlequinCompletion]:
             """
             select distinct
                 routine_name as label,
-                -- quote_ident() also quotes keywords like extract and left,
-                -- which only parse unquoted, so a name that needs no quotes
-                -- is inserted bare
-                case
-                    when routine_name ~ '^[a-z_][a-z0-9_$]*$' then routine_name
-                    else quote_ident(routine_name)
-                end as value,
                 case when routine_type is null then 'agg' else 'fn' end as type_label,
                 case
                     when routine_schema = 'pg_catalog'  --
@@ -57,12 +52,12 @@ def _get_completions(conn: Connection) -> list[HarlequinCompletion]:
             ("\\_%", "pg\\_%", "binary\\_upgrade\\_%"),
         )
         results = cur.fetchall()
-    for label, value, type_label, context in results:
+    for label, type_label, context in results:
         completions.append(
             HarlequinCompletion(
                 label=label,
                 type_label=type_label,
-                value=value,
+                value=quote_identifier_if_needed(label),
                 priority=1000,
                 context=context,
             )

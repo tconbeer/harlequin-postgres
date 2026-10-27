@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Callable, Generator
 import psycopg
 import pytest
 from harlequin.driver import HarlequinDriver
+from harlequin.exception import HarlequinQueryError
 from psycopg import sql
 
 from harlequin_postgres.adapter import HarlequinPostgresConnection
@@ -293,11 +294,48 @@ def test_list_indexes_lists_the_schema(
     assert (index_row[0], index_row[4]) == (tricky_name, tricky_name)
 
 
-def test_view_definition_reads_the_view(tricky_items: TrickyItems) -> None:
+def _as_the_editor_holds_it(text: str) -> str:
+    """text split into lines the way the editor splits it."""
+    return "\n".join(text.splitlines())
+
+
+def test_view_definition_reads_the_view(
+    connection: HarlequinPostgresConnection, tricky_items: TrickyItems
+) -> None:
     driver = RecordingDriver()
     show_view_definition(tricky_items.view, driver)
     [definition] = driver.new_buffers
-    assert "42 AS answer" in definition
+    assert _rows(connection, _as_the_editor_holds_it(definition)) == [(42,)]
+
+
+@pytest.mark.parametrize(
+    "view_name", ["new\nline", "line\u2028sep", "form\x0cfeed", "v\ndrop table t; --"]
+)
+def test_view_definition_comment_holds_a_line_break_in_the_name(
+    connection: HarlequinPostgresConnection, view_name: str
+) -> None:
+    connection.execute("create table t (a int)")
+    _execute(
+        connection,
+        sql.SQL("create view public.{} as select 42 as answer").format(
+            sql.Identifier(view_name)
+        ),
+    )
+    [db_item] = [
+        item
+        for item in connection.get_catalog().items
+        if isinstance(item, DatabaseCatalogItem) and item.label == "test"
+    ]
+    [schema_item] = [i for i in db_item.fetch_children() if i.label == "public"]
+    [view_item] = [i for i in schema_item.fetch_children() if i.label == view_name]
+    assert isinstance(view_item, ViewCatalogItem)
+
+    driver = RecordingDriver()
+    show_view_definition(view_item, driver)
+    [definition] = driver.new_buffers
+
+    assert _rows(connection, _as_the_editor_holds_it(definition)) == [(42,)]
+    assert _rows(connection, "select a from t") == []
 
 
 def test_view_definition_of_a_missing_view_notifies(
@@ -410,3 +448,18 @@ def test_editor_text_runs_with_standard_conforming_strings_off(
 
     assert [row[0] for row in _rows(connection, describe)] == [tricky_name, "other"]
     assert {row[0] for row in _rows(connection, listing)} == {tricky_name}
+
+
+def test_failed_view_definition_lookup_rolls_back_manual_transaction(
+    connection: HarlequinPostgresConnection,
+) -> None:
+    connection.toggle_transaction_mode()
+    assert connection.transaction_mode.label == "Manual"
+    connection.execute("select 1")
+    with pytest.raises(psycopg.errors.DivisionByZero):
+        connection._main_conn.execute("select 1/0")
+
+    with pytest.raises(HarlequinQueryError):
+        connection._get_view_definition("public", "any_view")
+
+    assert _rows(connection, "select 1") == [(1,)]

@@ -4,9 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-### Bug Fixes
-
-- Data Catalog actions and autocomplete now quote names correctly, so they work on objects whose names contain quotes, backslashes, or capital letters, and the Data Catalog loads on servers with `standard_conforming_strings` off ([tconbeer/harlequin#1209](https://github.com/tconbeer/harlequin/issues/1209)).
+- Data Catalog actions and autocomplete now work on objects whose names contain quotes, backslashes, or capital letters, and the Data Catalog loads when `standard_conforming_strings` is off ([tconbeer/harlequin#1209](https://github.com/tconbeer/harlequin/issues/1209)).
 
 ## [1.5.2] - 2026-10-23
 

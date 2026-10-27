@@ -3,7 +3,12 @@ from __future__ import annotations
 import psycopg
 import pytest
 
-from harlequin_postgres.quoting import quote_identifier, quote_literal, quote_qualified
+from harlequin_postgres.quoting import (
+    quote_identifier,
+    quote_identifier_if_needed,
+    quote_literal,
+    quote_qualified,
+)
 
 TEST_DB_CONN = "postgresql://postgres:for-testing@localhost:5432"
 
@@ -36,6 +41,24 @@ NAMES = [
 )
 def test_quote_identifier(name: str, expected: str) -> None:
     assert quote_identifier(name) == expected
+
+
+@pytest.mark.parametrize(
+    "name,expected",
+    [
+        ("plain_name", "plain_name"),
+        ("_under$core9", "_under$core9"),
+        ("extract", "extract"),
+        ("Mixed", '"Mixed"'),
+        ("9lives", '"9lives"'),
+        ("has space", '"has space"'),
+        ('dq"uote', '"dq""uote"'),
+        ("ünïcode", '"ünïcode"'),
+        ("trailing\n", '"trailing\n"'),
+    ],
+)
+def test_quote_identifier_if_needed(name: str, expected: str) -> None:
+    assert quote_identifier_if_needed(name) == expected
 
 
 def test_quote_qualified() -> None:

@@ -581,8 +581,11 @@ def show_view_definition(
     if view_def is None:
         driver.notify(f"Could not find the view {item.label}", severity="error")
         return
+    # the editor breaks lines wherever str.splitlines() does, so a name holding
+    # a line break would otherwise end the comment early
+    flat_view_name = " ".join(item.query_name.splitlines())
     driver.insert_text_in_new_buffer(
-        f"-- View definition for {item.query_name}\n" + view_def
+        f"-- View definition for {flat_view_name}\n" + view_def
     )
 
 

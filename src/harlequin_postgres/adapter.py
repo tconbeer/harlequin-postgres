@@ -708,6 +708,9 @@ class HarlequinPostgresConnection(HarlequinConnection):
                 )
                 result: tuple[str] | None = cur.fetchone()
         except Error as e:
+            # as execute() does, so a failed lookup leaves no aborted transaction
+            if self.transaction_mode.label != "Auto":
+                self.rollback()
             raise HarlequinQueryError(
                 msg=str(e), title="Postgres raised an error reading a view:"
             ) from e

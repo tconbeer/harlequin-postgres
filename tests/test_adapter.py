@@ -548,9 +548,13 @@ def test_completions_quote_routine_names_that_need_it(
     assert values_by_label['dq"uote'] == '"dq""uote"'
     assert values_by_label["sq'uote"] == '"sq\'uote"'
     assert values_by_label["plain_func"] == "plain_func"
-    # keywords that are also functions only parse unquoted
+    # a function with keyword syntax does not parse quoted
     assert values_by_label["extract"] == "extract"
-    assert values_by_label["left"] == "left"
+    cur = connection.execute(
+        f"select {values_by_label['extract']}(year from date '2024-01-02')"
+    )
+    assert cur is not None
+    assert cur.fetchall() == [(2024,)]
     for label in ["MyFunc", 'dq"uote', "sq'uote", "plain_func"]:
         cur = connection.execute(f"select {values_by_label[label]}()")
         assert cur is not None
