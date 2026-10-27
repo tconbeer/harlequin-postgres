@@ -41,18 +41,25 @@ from harlequin_postgres.completions import _get_completions
 from harlequin_postgres.loaders import register_inf_loaders
 
 _LIKE_ESCAPE = "\\"
-"""What escapes a LIKE metacharacter in a term the caller typed."""
+"""What escapes a LIKE metacharacter in a term the caller typed.
+
+It is the default escape of `like` and `ilike`, so the queries name no `escape`.
+"""
+
+_SYSTEM_SCHEMA_PATTERN = "pg\\_%"
+"""The LIKE pattern for the schemas Postgres reserves for itself."""
 
 
 def _user_schemas(column: str) -> str:
     """The schemas the catalog shows, as a predicate on `column`.
 
     The same filter `_get_schemas()` applies, so a search only reports paths
-    that `--catalog` also walks. The `%` is doubled because these queries are
-    executed with parameters.
+    that `--catalog` also walks. `column` is always a column reference written
+    in this module, never a name read from the database.
     """
     return (
-        f"{column} != 'information_schema' and {column} not like 'pg\\_%%' escape '\\'"
+        f"{column} != 'information_schema' "
+        f"and {column} not like %(system_schema_pattern)s"
     )
 
 
@@ -62,7 +69,7 @@ from pg_database d
 where
     d.datistemplate is false
     and d.datallowconn is true
-    and d.datname ilike %s escape '\\'
+    and d.datname ilike %(pattern)s
 """
 """The databases on the server, which is the catalog's top level.
 
@@ -79,7 +86,7 @@ from information_schema.schemata s
 where
     s.catalog_name = current_database()
     and {_user_schemas("s.schema_name")}
-    and s.schema_name ilike %s escape '\\'
+    and s.schema_name ilike %(pattern)s
 """
 
 _SEARCH_RELATIONS = f"""
@@ -90,17 +97,17 @@ from information_schema.tables t
 where
     t.table_catalog = current_database()
     and {_user_schemas("t.table_schema")}
-    and t.table_name ilike %s escape '\\'
+    and t.table_name ilike %(pattern)s
 """
 
 _SEARCH_MATERIALIZED_VIEWS = f"""
 select
     current_database()::text, m.schemaname::text, m.matviewname::text,
-    '{MATERIALIZED_VIEW}'::text, null::text, null::text
+    %(materialized_view)s::text, null::text, null::text
 from pg_matviews m
 where
     {_user_schemas("m.schemaname")}
-    and m.matviewname ilike %s escape '\\'
+    and m.matviewname ilike %(pattern)s
 """
 """Matviews are not in information_schema, the same reason `_get_mvs()` exists."""
 
@@ -116,13 +123,13 @@ join information_schema.tables t
 where
     c.table_catalog = current_database()
     and {_user_schemas("c.table_schema")}
-    and c.column_name ilike %s escape '\\'
+    and c.column_name ilike %(pattern)s
 """
 
 _SEARCH_MATERIALIZED_VIEW_COLUMNS = f"""
 select
     current_database()::text, s.nspname::text, t.relname::text,
-    '{MATERIALIZED_VIEW}'::text, a.attname::text,
+    %(materialized_view)s::text, a.attname::text,
     pg_catalog.format_type(a.atttypid, a.atttypmod)::text
 from pg_attribute a
 join pg_class t on a.attrelid = t.oid
@@ -132,7 +139,7 @@ where
     and a.attnum > 0
     and not a.attisdropped
     and {_user_schemas("s.nspname")}
-    and a.attname ilike %s escape '\\'
+    and a.attname ilike %(pattern)s
 """
 """The matview equivalent of `_SEARCH_COLUMNS`, shaped like `_get_mv_cols()`."""
 
@@ -152,7 +159,6 @@ _SEARCH_BRANCHES: dict[CatalogSearchKind, tuple[str, ...]] = {
 
 A row names one item by filling in the levels above it and leaving the rest
 null, so `all` is every level of the catalog rather than the two at the bottom.
-Each branch binds the pattern exactly once, in this order.
 """
 
 _SEARCH_SQL = {
@@ -441,8 +447,11 @@ class HarlequinPostgresConnection(HarlequinConnection):
     def search_catalog(
         self, term: str, kind: CatalogSearchKind = "all"
     ) -> list[CatalogSearchResult]:
-        pattern = _contains_pattern(term)
-        parameters = [pattern] * len(_SEARCH_BRANCHES[kind])
+        parameters = {
+            "pattern": _contains_pattern(term),
+            "system_schema_pattern": _SYSTEM_SCHEMA_PATTERN,
+            "materialized_view": MATERIALIZED_VIEW,
+        }
         try:
             with self.pool.connection() as conn, conn.cursor() as cur:
                 cur.execute(_SEARCH_SQL[kind], parameters)
@@ -600,10 +609,10 @@ class HarlequinPostgresConnection(HarlequinConnection):
                 where
                     catalog_name = %s
                     and schema_name != 'information_schema'
-                    and schema_name not like 'pg\\_%%' escape '\\'
+                    and schema_name not like %s
                 order by schema_name asc
                 ;""",
-                (dbname,),
+                (dbname, _SYSTEM_SCHEMA_PATTERN),
             )
             results: list[tuple[str]] = cur.fetchall()
         return results
@@ -680,6 +689,32 @@ class HarlequinPostgresConnection(HarlequinConnection):
             )
             results: list[tuple[str, str]] = cur.fetchall()
         return results
+
+    def _get_view_definition(self, schema: str, view: str) -> str | None:
+        """The definition of a view, or None if there is no such view.
+
+        Read on the main connection, which sees the views its own session made.
+        """
+        try:
+            with self._main_conn.cursor() as cur:
+                cur.execute(
+                    """
+                    select pg_catalog.pg_get_viewdef(c.oid, true)
+                    from pg_catalog.pg_class as c
+                    join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+                    where c.relname = %s and n.nspname = %s
+                    ;""",
+                    (view, schema),
+                )
+                result: tuple[str] | None = cur.fetchone()
+        except Error as e:
+            # as execute() does, so a failed lookup leaves no aborted transaction
+            if self.transaction_mode.label != "Auto":
+                self.rollback()
+            raise HarlequinQueryError(
+                msg=str(e), title="Postgres raised an error reading a view:"
+            ) from e
+        return result[0] if result else None
 
     @staticmethod
     def _short_column_type(type_name: str) -> str:

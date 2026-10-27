@@ -21,6 +21,7 @@ from harlequin_postgres.interactions import (
     show_select_star,
     show_view_definition,
 )
+from harlequin_postgres.quoting import quote_identifier, quote_qualified
 
 if TYPE_CHECKING:
     from harlequin_postgres.adapter import HarlequinPostgresConnection
@@ -45,8 +46,10 @@ class ColumnCatalogItem(InteractiveCatalogItem["HarlequinPostgresConnection"]):
         type_label: str,
         type_name: str | None = None,
     ) -> "ColumnCatalogItem":
-        column_qualified_identifier = f'{parent.qualified_identifier}."{label}"'
-        column_query_name = f'"{label}"'
+        column_query_name = quote_identifier(label)
+        column_qualified_identifier = (
+            f"{parent.qualified_identifier}.{column_query_name}"
+        )
         return cls(
             qualified_identifier=column_qualified_identifier,
             query_name=column_query_name,
@@ -98,11 +101,10 @@ class ViewCatalogItem(RelationCatalogItem):
         label: str,
         type_name: str | None = "VIEW",
     ) -> "ViewCatalogItem":
-        relation_query_name = f'"{parent.label}"."{label}"'
-        relation_qualified_identifier = f'{parent.qualified_identifier}."{label}"'
+        relation_identifier = quote_qualified(parent.label, label)
         return cls(
-            qualified_identifier=relation_qualified_identifier,
-            query_name=relation_query_name,
+            qualified_identifier=relation_identifier,
+            query_name=relation_identifier,
             label=label,
             type_label="v",
             type_name=type_name,
@@ -125,11 +127,10 @@ class TableCatalogItem(RelationCatalogItem):
         label: str,
         type_name: str | None = "BASE TABLE",
     ) -> "TableCatalogItem":
-        relation_query_name = f'"{parent.label}"."{label}"'
-        relation_qualified_identifier = f'{parent.qualified_identifier}."{label}"'
+        relation_identifier = quote_qualified(parent.label, label)
         return cls(
-            qualified_identifier=relation_qualified_identifier,
-            query_name=relation_query_name,
+            qualified_identifier=relation_identifier,
+            query_name=relation_identifier,
             label=label,
             type_label="t",
             type_name=type_name,
@@ -146,11 +147,10 @@ class TempTableCatalogItem(TableCatalogItem):
         label: str,
         type_name: str | None = "LOCAL TEMPORARY",
     ) -> "TempTableCatalogItem":
-        relation_query_name = f'"{parent.label}"."{label}"'
-        relation_qualified_identifier = f'{parent.qualified_identifier}."{label}"'
+        relation_identifier = quote_qualified(parent.label, label)
         return cls(
-            qualified_identifier=relation_qualified_identifier,
-            query_name=relation_query_name,
+            qualified_identifier=relation_identifier,
+            query_name=relation_identifier,
             label=label,
             type_label="tmp",
             type_name=type_name,
@@ -171,11 +171,10 @@ class ForeignCatalogItem(TableCatalogItem):
         label: str,
         type_name: str | None = "FOREIGN",
     ) -> "ForeignCatalogItem":
-        relation_query_name = f'"{parent.label}"."{label}"'
-        relation_qualified_identifier = f'{parent.qualified_identifier}."{label}"'
+        relation_identifier = quote_qualified(parent.label, label)
         return cls(
-            qualified_identifier=relation_qualified_identifier,
-            query_name=relation_query_name,
+            qualified_identifier=relation_identifier,
+            query_name=relation_identifier,
             label=label,
             type_label="f",
             type_name=type_name,
@@ -192,11 +191,10 @@ class MaterializedViewCatalogItem(RelationCatalogItem):
         label: str,
         type_name: str | None = MATERIALIZED_VIEW,
     ) -> "MaterializedViewCatalogItem":
-        relation_query_name = f'"{parent.label}"."{label}"'
-        relation_qualified_identifier = f'{parent.qualified_identifier}."{label}"'
+        relation_identifier = quote_qualified(parent.label, label)
         return cls(
-            qualified_identifier=relation_qualified_identifier,
-            query_name=relation_query_name,
+            qualified_identifier=relation_identifier,
+            query_name=relation_identifier,
             label=label,
             type_label="mv",
             type_name=type_name,
@@ -235,7 +233,7 @@ class SchemaCatalogItem(InteractiveCatalogItem["HarlequinPostgresConnection"]):
         parent: "DatabaseCatalogItem",
         label: str,
     ) -> "SchemaCatalogItem":
-        schema_identifier = f'"{label}"'
+        schema_identifier = quote_identifier(label)
         return cls(
             qualified_identifier=schema_identifier,
             query_name=schema_identifier,
@@ -308,7 +306,7 @@ class DatabaseCatalogItem(InteractiveCatalogItem["HarlequinPostgresConnection"])
     def from_label(
         cls, label: str, connection: "HarlequinPostgresConnection"
     ) -> "DatabaseCatalogItem":
-        database_identifier = f'"{label}"'
+        database_identifier = quote_identifier(label)
         return cls(
             qualified_identifier=database_identifier,
             query_name=database_identifier,

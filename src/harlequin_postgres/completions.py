@@ -6,6 +6,8 @@ from pathlib import Path
 from harlequin import HarlequinCompletion
 from psycopg import Connection
 
+from harlequin_postgres.quoting import quote_identifier_if_needed
+
 
 def _get_completions(conn: Connection) -> list[HarlequinCompletion]:
     completions: list[HarlequinCompletion] = []
@@ -31,7 +33,7 @@ def _get_completions(conn: Connection) -> list[HarlequinCompletion]:
 
     with conn.cursor() as cur:
         cur.execute(
-            r"""
+            """
             select distinct
                 routine_name as label,
                 case when routine_type is null then 'agg' else 'fn' end as type_label,
@@ -43,11 +45,11 @@ def _get_completions(conn: Connection) -> list[HarlequinCompletion]:
             from information_schema.routines
             where
                 length(routine_name) < 37
-                and routine_name not ilike '\_%'
-                and routine_name not ilike 'pg\_%'
-                and routine_name not ilike 'binary\_upgrade\_%'
-
-            ;"""
+                and routine_name not ilike %s
+                and routine_name not ilike %s
+                and routine_name not ilike %s
+            ;""",
+            ("\\_%", "pg\\_%", "binary\\_upgrade\\_%"),
         )
         results = cur.fetchall()
     for label, type_label, context in results:
@@ -55,7 +57,7 @@ def _get_completions(conn: Connection) -> list[HarlequinCompletion]:
             HarlequinCompletion(
                 label=label,
                 type_label=type_label,
-                value=label,
+                value=quote_identifier_if_needed(label),
                 priority=1000,
                 context=context,
             )
