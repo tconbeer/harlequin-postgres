@@ -528,3 +528,30 @@ def test_read_only_enforced_in_autocommit_session(
     assert read_only_connection._main_conn.autocommit is True
     with pytest.raises(HarlequinQueryError):
         read_only_connection.execute("insert into foo values (2)")
+
+
+def test_completions_quote_routine_names_that_need_it(
+    connection: HarlequinPostgresConnection,
+) -> None:
+    for function_name in ['"MyFunc"', '"dq""uote"', '"sq\'uote"', "plain_func"]:
+        connection.execute(
+            f"create function {function_name}() returns int language sql as 'select 1'"
+        )
+
+    values_by_label = {
+        completion.label: completion.value
+        for completion in connection.get_completions()
+        if completion.type_label == "fn"
+    }
+
+    assert values_by_label["MyFunc"] == '"MyFunc"'
+    assert values_by_label['dq"uote'] == '"dq""uote"'
+    assert values_by_label["sq'uote"] == '"sq\'uote"'
+    assert values_by_label["plain_func"] == "plain_func"
+    # keywords that are also functions only parse unquoted
+    assert values_by_label["extract"] == "extract"
+    assert values_by_label["left"] == "left"
+    for label in ["MyFunc", 'dq"uote', "sq'uote", "plain_func"]:
+        cur = connection.execute(f"select {values_by_label[label]}()")
+        assert cur is not None
+        assert cur.fetchall() == [(1,)]

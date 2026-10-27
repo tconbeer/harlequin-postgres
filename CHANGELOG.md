@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Bug Fixes
+
+- Data Catalog actions and autocomplete now quote names correctly, so they work on objects whose names contain quotes, backslashes, or capital letters, and the Data Catalog loads on servers with `standard_conforming_strings` off ([tconbeer/harlequin#1209](https://github.com/tconbeer/harlequin/issues/1209)).
+
 ## [1.5.2] - 2026-10-23
 
 - Connection errors are now reported immediately with the server's message, instead of `couldn't get a connection after 30.00 sec`, and suggest how to supply a password when one is required ([#73](https://github.com/tconbeer/harlequin-postgres/issues/73)).

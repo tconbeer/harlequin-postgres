@@ -491,3 +491,29 @@ def test_search_catalog_items_match_fetch_children(
         assert searched.qualified_identifier == walked.qualified_identifier
         assert searched.type_label == walked.type_label
         assert searched.type_name == walked.type_name
+
+
+def test_catalog_with_standard_conforming_strings_off(
+    connection_for_search: HarlequinPostgresConnection,
+    connect_again: Callable[..., HarlequinPostgresConnection],
+) -> None:
+    """Catalog queries mean the same thing whichever way the server reads `\\`."""
+    connection_for_search.execute("create schema pgmq")
+    conn = connect_again("options=-cstandard_conforming_strings%3Doff")
+
+    schema_labels = set(_schema_items(conn))
+    assert {"public", "one", "two", "three", "four", "five", "pgmq"} <= schema_labels
+    assert not [label for label in schema_labels if label.startswith("pg_")]
+
+    assert [r.item.label for r in conn.search_catalog("a_b", kind="relations")] == [
+        "a_b"
+    ]
+    assert not conn.search_catalog("pg_statistic", kind="relations")
+
+    routine_labels = {
+        completion.label
+        for completion in conn.get_completions()
+        if completion.type_label in ("fn", "agg")
+    }
+    assert {"now", "point_right"} <= routine_labels
+    assert not [label for label in routine_labels if label.startswith("pg_")]
