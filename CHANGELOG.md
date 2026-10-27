@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-10-27
+
 - Data Catalog actions and autocomplete now work on objects whose names contain quotes, backslashes, or capital letters, and the Data Catalog loads when `standard_conforming_strings` is off ([tconbeer/harlequin#1209](https://github.com/tconbeer/harlequin/issues/1209)).
 
 ## [1.5.2] - 2026-10-23
@@ -114,7 +116,8 @@ All notable changes to this project will be documented in this file.
 
 - Adds a basic Postgres adapter with most common connection options.
 
-[unreleased]: https://github.com/tconbeer/harlequin-postgres/compare/1.5.2...HEAD
+[unreleased]: https://github.com/tconbeer/harlequin-postgres/compare/1.6.0...HEAD
+[1.6.0]: https://github.com/tconbeer/harlequin-postgres/compare/1.5.2...1.6.0
 [1.5.2]: https://github.com/tconbeer/harlequin-postgres/compare/1.5.1...1.5.2
 [1.5.1]: https://github.com/tconbeer/harlequin-postgres/compare/1.5.0...1.5.1
 [1.5.0]: https://github.com/tconbeer/harlequin-postgres/compare/1.4.1...1.5.0
